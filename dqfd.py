@@ -2,6 +2,7 @@
 
 
 import sys
+
 sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')  # add carla to python path
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,7 +15,6 @@ from PIL import Image
 from itertools import count
 from itertools import count
 
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -26,17 +26,14 @@ from carla.settings import CarlaSettings
 from carla.tcp import TCPConnectionError
 from carla.util import print_over_same_line
 
-
 device = torch.device('cuda')
 capacity = 5000
 demosize = 2000
 playsize = 3000
-target = np.array([158.08, 27.18])# the target location point 134 on the map
+target = np.array([158.08, 27.18])  # the target location point 134 on the map
 frame_max = 1000  # if the agent hasnot arrived at the target within the given frames/time, demonstration fails.
 batchsize = 128
 Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
-
-
 
 
 # The enviroment provides s, a, r(s), and transition s'
@@ -86,27 +83,22 @@ def carla_init(client):
     print('Starting new episode at %r, %d...' % (scene.map_name, player_start))
 
 
-
-
-def carla_observe(client):
-
-    measurements, images = client.read_data()
-    player_measurements = measurements.player_measurements
-    pos_x = player_measurements.transform.location.x
-    pos_y = player_measurements.transform.location.y
-    speed = player_measurements.forward_speed * 3.6  # m/s -> km/h
-    col_cars = player_measurements.collision_vehicles
-    col_ped = player_measurements.collision_pedestrians
-    col_other = player_measurements.collision_other
-    other_lane = 100 * player_measurements.intersection_otherlane
-    offroad = 100 * player_measurements.intersection_offroad
+def carla_meas_pro(measurements):
+    pos_x = measurements.player_measurements.transform.location.x
+    pos_y = measurements.player_measurements.transform.location.y
+    speed = measurements.player_measurements.forward_speed * 3.6  # m/s -> km/h
+    col_cars = measurements.player_measurements.collision_vehicles
+    col_ped = measurements.player_measurements.collision_pedestrians
+    col_other = measurements.player_measurements.collision_other
+    other_lane = 100 * measurements.player_measurements.intersection_otherlane
+    offroad = 100 * measurements.player_measurements.intersection_offroad
     agents_num = len(measurements.non_player_agents)
 
-    meas= {
+    meas = {
         'pos_x': pos_x,
         'pos_y': pos_y,
         'speed': speed,
-        'col_damage': col_cars+col_ped+col_other,
+        'col_damage': col_cars + col_ped + col_other,
         'other_lane': other_lane,
         'offroad': offroad,
         'agents_num': agents_num,
@@ -124,57 +116,57 @@ def carla_observe(client):
     dis = np.linalg.norm(pose - target)
 
     if dis < 1:
-        done=1  #final state arrived!
+        done = 1  # final state arrived!
     else:
         done = 0
 
-    meas['dis']=dis   #distance to target
+    meas['dis'] = dis  # distance to target
 
-    return meas, images, done
-
-
-
-
+    return meas, done
 
 
 # run carla and record the measurements, the images, and the control signals
 def carla_demo(client):
-    episode_num = 2
+    episode_num = 1
 
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
 
     for episode in range(0, episode_num):
         carla_init(client)
-        meas_old, images_old, done = carla_observe(client)
+        # meas_old, images_old, done = carla_observe(client)
         measurement_list = []
+        meas_old = None
+        images_old = None
+
         for frame in range(0, frame_max):
+            print('Running at Frame ', frame)
 
             measurements, sensor_data = client.read_data()
+
             control = measurements.player_measurements.autopilot_control
             control.steer += random.uniform(-0.1, 0.1)
-            # client.send_control(control)
-            client.send_control(
-                steer=random.uniform(-1.0, 1.0),
-                throttle=0.5,
-                brake=0.0,
-                hand_brake=False,
-                reverse=False)
+            client.send_control(control)
+            # client.send_control(
+            #     steer=random.uniform(-1.0, 1.0),
+            #     throttle=0.5,
+            #     brake=0.0,
+            #     hand_brake=False,
+            #     reverse=False)
 
-
-
-            meas_new, images_new, done = carla_observe(client)
+            meas_new, done = carla_meas_pro(measurements)
+            images_new = sensor_data
             measurement_list.append(meas_new)
 
-            reward = 1000*(meas_old['dis']-meas_new['dis'])+0.05*(meas_old['speed']-meas_new['speed'])-0.00002*(meas_old['col_damage']-meas_new['col_damage']) \
-                     -2*(meas_old['offroad']-meas_new['offroad'])-2*(meas_old['other_lane']-meas_new['other_lane'])
+            if meas_old:
 
-            memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
+                reward = 1000*(meas_old['dis']-meas_new['dis'])+0.05*(meas_old['speed']-meas_new['speed'])-0.00002*(meas_old['col_damage']-meas_new['col_damage']) \
+                         -2*(meas_old['offroad']-meas_new['offroad'])-2*(meas_old['other_lane']-meas_new['other_lane'])
+
+                memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
 
             for name, images in sensor_data.items():
                 filename = out_filename_format.format(episode, name, frame)
                 images.save_to_disk(filename)
-
-
 
             meas_old = meas_new
             images_old = images_new
@@ -183,13 +175,8 @@ def carla_demo(client):
                 print('Target achieved!')
                 break
 
-
         measurement_df = pd.DataFrame(measurement_list)
         measurement_df.to_csv('_measurements%d.csv' % episode)
-
-
-
-
 
 
 # Use pytorch to define the deep CNN for target network and policy network
@@ -235,7 +222,6 @@ class ExperienceReplay(object):
         else:
             return
 
-
     def playpush(self):
         pass
 
@@ -259,7 +245,6 @@ def select_action():
 
 memory = ExperienceReplay(capacity, demosize, playsize)
 
-
 with make_carla_client('localhost', 2000) as client:
     print('CarlaClient connected')
 
@@ -268,7 +253,6 @@ with make_carla_client('localhost', 2000) as client:
     update_frequency = 20
 
     carla_demo(client)
-
 
     # trainning with prioritized memory
     for t in range(pretrain_iteration):
