@@ -1,32 +1,27 @@
 #  -*- coding: utf-8 -*-
 
 
-import sys
-
-sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')  # add carla to python path
-import matplotlib
-import matplotlib.pyplot as plt
 import random
+import sys
 from collections import namedtuple
 
 import numpy as np
 import pandas as pd
-from PIL import Image
-from itertools import count
-from itertools import count
-
+# pytorch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as T
+
+# Carla
+# add carla to python path
+if sys.platform == "linux ":
+    sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')
 
 from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
-from carla.tcp import TCPConnectionError
-from carla.util import print_over_same_line
 
-device = torch.device('cuda')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 capacity = 5000
 demosize = 2000
 playsize = 3000
@@ -40,6 +35,11 @@ Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, me
 # a=[0,1] referring to moving left and right. s is represented by the current screen pixes substracting the previous screen pixes.
 
 def carla_init(client):
+    """
+
+    :param client:
+    :return:
+    """
     settings = CarlaSettings()
     settings.set(
         SynchronousMode=True,
@@ -48,8 +48,8 @@ def carla_init(client):
         NumberOfPedestrians=40,
         WeatherId=random.choice([1, 3, 7, 8, 14]),
         QualityLevel='Epic')
-    # settings.randomize_seeds()
 
+    # CAMERA
     camera0 = Camera('CameraRGB')
     # Set image resolution in pixels.
     camera0.set_image_size(800, 600)
@@ -63,6 +63,7 @@ def carla_init(client):
     camera1.set_position(0.30, 0, 1.30)
     settings.add_sensor(camera1)
 
+    # LIDAR
     lidar = Lidar('Lidar32')
     lidar.set_position(0, 0, 2.50)
     lidar.set_rotation(0, 0, 0)
@@ -84,6 +85,11 @@ def carla_init(client):
 
 
 def carla_meas_pro(measurements):
+    """
+
+    :param measurements:
+    :return:
+    """
     pos_x = measurements.player_measurements.transform.location.x
     pos_y = measurements.player_measurements.transform.location.y
     speed = measurements.player_measurements.forward_speed * 3.6  # m/s -> km/h
@@ -125,8 +131,27 @@ def carla_meas_pro(measurements):
     return meas, done
 
 
-# run carla and record the measurements, the images, and the control signals
+def cal_reward(meas_old, meas_new):
+    """
+
+    :param meas_old:
+    :param meas_new:
+    :return:
+    """
+
+    def delta(key):
+        return meas_old[key] - meas_new[key]
+
+    return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+    - 2 * delta('offroad') - 2 * delta('other_lane')
+
+
 def carla_demo(client):
+    """
+    run carla and record the measurements, the images, and the control signals
+    :param client:
+    :return:
+    """
     episode_num = 1
 
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
@@ -141,8 +166,10 @@ def carla_demo(client):
         for frame in range(0, frame_max):
             print('Running at Frame ', frame)
 
-            measurements, sensor_data = client.read_data()
+            # read new measurement
+            measurements, images_new = client.read_data()
 
+            # cal control signal
             control = measurements.player_measurements.autopilot_control
             control.steer += random.uniform(-0.1, 0.1)
             client.send_control(control)
@@ -153,27 +180,30 @@ def carla_demo(client):
             #     hand_brake=False,
             #     reverse=False)
 
+            # cal measurement
             meas_new, done = carla_meas_pro(measurements)
-            images_new = sensor_data
-            measurement_list.append(meas_new)
 
             if meas_old:
-
-                reward = 1000*(meas_old['dis']-meas_new['dis'])+0.05*(meas_old['speed']-meas_new['speed'])-0.00002*(meas_old['col_damage']-meas_new['col_damage']) \
-                         -2*(meas_old['offroad']-meas_new['offroad'])-2*(meas_old['other_lane']-meas_new['other_lane'])
+                reward =
 
                 memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
 
-            for name, images in sensor_data.items():
+            # save image to disk
+            for name, images in images_new.items():
                 filename = out_filename_format.format(episode, name, frame)
                 images.save_to_disk(filename)
 
-            meas_old = meas_new
-            images_old = images_new
+            # save measurement
+            measurement_list.append(meas_new)
+            meas_old, images_old = meas_new, images_new
 
+            # check for end condition
             if done:
                 print('Target achieved!')
                 break
+
+        if not done:
+            print("Target not achieved!")
 
         measurement_df = pd.DataFrame(measurement_list)
         measurement_df.to_csv('_measurements%d.csv' % episode)
@@ -249,11 +279,11 @@ with make_carla_client('localhost', 2000) as client:
     print('CarlaClient connected')
 
     # pre-trainning with only demonstration transitions
-    pretrain_iteration = 100
-    update_frequency = 20
+    # pretrain_iteration = 100
+    # update_frequency = 20
 
     carla_demo(client)
 
-    # trainning with prioritized memory
-    for t in range(pretrain_iteration):
-        pass
+    # # trainning with prioritized memory
+    # for t in range(pretrain_iteration):
+    #     pass
