@@ -21,18 +21,19 @@ from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-capacity = 5000
-demosize = 2000
-playsize = 3000
-target = np.array([158.08, 27.18])  # the target location point 134 on the map
-frame_max = 1000  # if the agent hasnot arrived at the target within the given frames/time, demonstration fails.
-batchsize = 128
-Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
+# ----------------------------Parameters --------------------------------
+CAPACITY = 5000
+DEMO_SIZE = 2000
+PLAY_SIZE = 3000
+TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
+FRAME_MAX = 1000  # if the agent has not arrived at the target within the given frames/time, demonstration fails.
+BATCH_SIZE = 128
 
 
-# The enviroment provides s, a, r(s), and transition s'
-# a=[0,1] referring to moving left and right. s is represented by the current screen pixes substracting the previous screen pixes.
+# ------------------------------Carla ------------------------------------
+
+# The environment provides s, a, r(s), and transition s'
+# a=[0,1] referring to moving left and right. s is represented by the current screen pixes subtracting the previous screen pixes.
 
 def carla_init(client):
     """
@@ -119,7 +120,7 @@ def carla_meas_pro(measurements):
     print(message)
 
     pose = np.array([pos_x, pos_y])
-    dis = np.linalg.norm(pose - target)
+    dis = np.linalg.norm(pose - TARGET)
 
     if dis < 1:
         done = 1  # final state arrived!
@@ -143,7 +144,7 @@ def cal_reward(meas_old, meas_new):
         return meas_old[key] - meas_new[key]
 
     return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
-    - 2 * delta('offroad') - 2 * delta('other_lane')
+           - 2 * delta('offroad') - 2 * delta('other_lane')
 
 
 def carla_demo(client):
@@ -152,18 +153,22 @@ def carla_demo(client):
     :param client:
     :return:
     """
+    global memory
+
     episode_num = 1
 
+    # file name format to save images
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
 
     for episode in range(0, episode_num):
+        # re-init client for each episode
         carla_init(client)
-        # meas_old, images_old, done = carla_observe(client)
+        # save all the measurement from frames
         measurement_list = []
         meas_old = None
         images_old = None
 
-        for frame in range(0, frame_max):
+        for frame in range(0, FRAME_MAX):
             print('Running at Frame ', frame)
 
             # read new measurement
@@ -183,9 +188,9 @@ def carla_demo(client):
             # cal measurement
             meas_new, done = carla_meas_pro(measurements)
 
+            # calculate and save reward into memory
             if meas_old:
-                reward =
-
+                reward = cal_reward(meas_old, meas_new)
                 memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
 
             # save image to disk
@@ -229,14 +234,10 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-policy_net = DQN().to(device)
-target_net = DQN().to(device)
-target_net.load_state_dict(policy_net.state_dict())
-target_net.eval()
+Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
 
 
 # the replay memory
-
 class ExperienceReplay(object):
 
     def __init__(self, capacity, demosize, playsize):
@@ -247,7 +248,7 @@ class ExperienceReplay(object):
         self.demomemory = []
 
     def demopush(self, *args):
-        if len(self.demomemory) < demosize:
+        if len(self.demomemory) < DEMO_SIZE:
             self.demomemory.append(Transition(*args))
         else:
             return
@@ -256,7 +257,7 @@ class ExperienceReplay(object):
         pass
 
     def replaySample(self, batchsize):
-        return random.sample(self.memory, batch_size)
+        return random.sample(self.playmemory + self.demomemory, batchsize)
 
 
 def loss():
@@ -272,11 +273,16 @@ def select_action():
 
 
 # Initialisation
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+policy_net = DQN().to(device)
+target_net = DQN().to(device)
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()
 
-memory = ExperienceReplay(capacity, demosize, playsize)
+memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
 
 with make_carla_client('localhost', 2000) as client:
-    print('CarlaClient connected')
+    print('Carla Client connected')
 
     # pre-trainning with only demonstration transitions
     # pretrain_iteration = 100
