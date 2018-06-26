@@ -9,24 +9,20 @@ np.random.seed(0)
 
 
 class SumTree:
-    """
-    A Sum Tree to store data with priority
-    Leaf stores priority of data, and each parent node is the sum of child nodes
-    """
-
-    def __init__(self, capacity, permanent_data=0):
+    def __init__(self, capacity, permanent_size=0):
         """
-
-        :param capacity:
-        :param permanent_data:
+        A Sum Tree to store data with priority
+        Leaf stores priority of data, and each parent node is the sum of child nodes
+        :param capacity: total number of data to store
+        :param permanent_size: data size to keep from beginning if override
         """
         self.full = False
         self.data_index = 0
         self.capacity = capacity
         self.priority_tree = np.zeros(2 * capacity - 1)  # stores priorities in leaf
-        self.data = np.zeros(capacity, dtype=object)  # stores data
-        self.permanent_data = permanent_data  # numbers of data which never be replaced TODO
-        if not 0 <= self.permanent_data <= self.capacity:
+        self.data = np.zeros(capacity, dtype=object)  # stores data of objects
+        self.permanent_size = permanent_size  # numbers of data which never be replaced
+        if not 0 <= self.permanent_size <= self.capacity:
             raise RuntimeError('permanent data shall be inside capacity!')
 
     def __len__(self):
@@ -45,7 +41,7 @@ class SumTree:
         self.data_index += 1  # move to the next index
         if self.data_index >= self.capacity:  # if full, override from beginning, but keep permanent data
             self.full = True
-            self.data_index = self.data_index % self.capacity + self.permanent_data
+            self.data_index = self.data_index % self.capacity + self.permanent_size
 
     def get_data(self, priority):
         """
@@ -86,4 +82,90 @@ class SumTree:
     def total_priority(self):
         return self.priority_tree[0]
 
+    @property
+    def priorities(self):
+        return self.priority_tree[-self.capacity:]
 
+
+class Memory:
+    def __init__(self, capacity, permanent_size=0):
+        """
+        Replay memory class with priority
+        :param capacity: total capacity
+        :param permanent_size: fixed data size which are not overridden
+        """
+        self.epsilon = 0.001  # small amount to avoid zero priority, Prioritized replay constants
+        self.demo_epsilon = 1.0  # Demonstration priority bonus
+        self.alpha = 0.4  # Prioritized replay exponent α, [0~1] convert the importance of TD error to priority
+
+        self.beta = 0.6  # Prioritized replay importance sampling exponent
+        self.beta_increment_per_sampling = 0.001
+
+        self.abs_err_upper = 1.  # clipped abs error
+
+        self.permanent_size = permanent_size
+        self.sum_tree = SumTree(capacity, permanent_size)
+
+    def __len__(self):
+        return len(self.sum_tree)
+
+    @property
+    def full(self):
+        return self.sum_tree.full
+
+    def push(self, transition):
+        """
+        add transition to memory
+        :param transition:
+        :return:
+        """
+        # store transition with max priority already stored
+        # for first transition, store with priority=abs_err_upper
+        max_p = np.max(self.sum_tree.priorities)
+        if max_p == 0:
+            max_p = self.abs_err_upper
+        self.sum_tree.append(max_p, transition)  # set the max_p for new transition
+
+    def sample(self, batch_size):
+        """
+        Randomly choose batch_size samples from memory, based on priorities
+        :param batch_size:
+        :return:
+        """
+        if not self.full:
+            raise RuntimeError("Sampling should not execute when not full with capacity %d" % self.sum_tree.capacity)
+
+        # sampled data
+        batch_id = np.empty((batch_size,), dtype=np.int32)
+        batch_memory = np.empty((batch_size, self.sum_tree.data[0].size), dtype=object)
+        batch_weight = np.empty((batch_size, 1))
+
+        # divide priority into batches
+        pri_seg = self.sum_tree.total_priority / batch_size
+        # update beta (beta0->1)
+        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
+        # minimum priority
+        min_prob = np.min(self.sum_tree.priorities) / self.sum_tree.total_priority
+        assert min_prob > 0
+
+        for i in range(batch_size):
+            v = np.random.uniform(pri_seg * i, pri_seg * (i + 1))
+            batch_id[i], priority, batch_memory[i] = self.sum_tree.get_data(v)  # note: id is the index in sum tree
+            prob = priority / self.sum_tree.total_priority
+            batch_weight[i, 0] = np.power(prob / min_prob, -self.beta)  # TODO: -beta_0?
+        return batch_id, batch_memory, batch_weight
+
+    def batch_update(self, tree_ids, abs_errors):
+        """
+        convert the importance of TD error to priority
+        :param tree_ids:
+        :param abs_errors:
+        :return:
+        """
+        abs_errors[self.permanent_size:] += self.epsilon
+        # priorities of demo transitions are given a bonus of demo_epsilon, to boost the frequency that they are sampled
+        abs_errors[:self.sum_tree.permanent_size] += self.demo_epsilon
+        clipped_errors = np.minimum(abs_errors, self.abs_err_upper)
+        ps = np.power(clipped_errors, self.alpha)
+        for t, p in zip(tree_ids, ps):
+            self.sum_tree.set_priority(t, p)

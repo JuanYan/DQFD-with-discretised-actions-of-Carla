@@ -21,6 +21,8 @@ from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
 
+from memory import Memory
+
 # ----------------------------Parameters --------------------------------
 CAPACITY = 5000
 DEMO_SIZE = 2000
@@ -237,27 +239,27 @@ class DQN(nn.Module):
 Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
 
 
-# the replay memory
-class ExperienceReplay(object):
-
-    def __init__(self, capacity, demosize, playsize):
-        self.capacity = capacity
-        self.demosize = demosize
-        self.playsize = playsize
-        self.playmemory = []
-        self.demomemory = []
-
-    def demopush(self, *args):
-        if len(self.demomemory) < DEMO_SIZE:
-            self.demomemory.append(Transition(*args))
-        else:
-            return
-
-    def playpush(self):
-        pass
-
-    def replaySample(self, batchsize):
-        return random.sample(self.playmemory + self.demomemory, batchsize)
+# # the replay memory
+# class ExperienceReplay(object):
+#
+#     def __init__(self, capacity, demosize, playsize):
+#         self.capacity = capacity
+#         self.demosize = demosize
+#         self.playsize = playsize
+#         self.playmemory = []
+#         self.demomemory = []
+#
+#     def demopush(self, *args):
+#         if len(self.demomemory) < DEMO_SIZE:
+#             self.demomemory.append(Transition(*args))
+#         else:
+#             return
+#
+#     def playpush(self):
+#         pass
+#
+#     def replaySample(self, batchsize):
+#         return random.sample(self.playmemory + self.demomemory, batchsize)
 
 
 def loss():
@@ -279,7 +281,8 @@ target_net = DQN().to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
+# memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
+memory = Memory(CAPACITY, DEMO_SIZE)
 
 with make_carla_client('localhost', 2000) as client:
     print('Carla Client connected')
