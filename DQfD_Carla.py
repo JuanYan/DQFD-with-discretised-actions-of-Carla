@@ -14,7 +14,7 @@ import torch.nn.functional as F
 
 # Carla
 # add carla to python path
-if sys.platform == "linux ":
+if sys.platform == "linux":
     sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')
 
 from carla.client import make_carla_client
