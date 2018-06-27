@@ -1,22 +1,18 @@
 #  -*- coding: utf-8 -*-
 
-
 import random
 import sys
 from collections import namedtuple
-
 import numpy as np
 import pandas as pd
-# pytorch
-
 from PIL import Image
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
-
+import config
+import utils
 
 # Carla
 # add carla to python path
@@ -26,7 +22,6 @@ if sys.platform == "linux":
 from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
-
 
 # ----------------------------Parameters --------------------------------
 CAPACITY = 4000
@@ -173,14 +168,14 @@ def carla_demo(client):
         # save all the measurement from frames
         measurement_list = []
         meas_old = None
-        state_old= None
+        state_old = None
 
         for frame in range(0, FRAME_MAX):
             print('Running at Frame ', frame)
 
             # read new measurement
             measurements, images_new = client.read_data()
-            state_new = images_new['CameraDepth']  # use the depth image only at experiment peoriod
+            state_new = images_new['CameraRGB']  # use the depth image only at experiment peoriod
 
             # cal control signal
             control = measurements.player_measurements.autopilot_control
@@ -242,8 +237,6 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-
-
 # the replay memory
 class ExperienceReplay(object):
 
@@ -261,10 +254,10 @@ class ExperienceReplay(object):
         else:
             return
 
-    def playpush(self):
+    def playpush(self, *args):
         if len(self.playmemory) < self.playsize:
             self.playmemory.append(None)
-            #leave an empty space
+            # leave an empty space
         self.memory[self.position] = Transition(*args)
         self.position = (self.position + 1) % self.playsize
 
@@ -273,8 +266,6 @@ class ExperienceReplay(object):
 
     def demoSample(self, batchsize):
         return random.sample(self.demomemory, batchsize)
-
-
 
 
 def select_action(state):  # state = images.rgb
@@ -293,9 +284,7 @@ def loss(self):
     pass
 
 
-
 Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
-
 
 # Initialisation
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -305,17 +294,14 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
-n_pretrain=200
+n_pretrain = 200
 
-
-
-
-#Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
+# Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
 resize_image = T.Compose([T.ToPILImage(),
-                    T.Resize(600, interpolation=Image.CUBIC),
-                    T.ToTensor()])
+                          T.Resize(600, interpolation=Image.CUBIC),
+                          T.ToTensor()])
 
-with make_carla_client('localhost', 2000) as client:
+with make_carla_client(config.CARLA_HOST_ADDRESS, 2000) as client:
     print('Carla Client connected')
 
     # pre-trainning with only demonstration transitions
@@ -328,14 +314,13 @@ with make_carla_client('localhost', 2000) as client:
 
     for steps in range(n_pretrain):
         transitions = memory.demoSample(BATCH_SIZE)
-        batch = Transition(*zip(*transitions))  #change data type from tuple
+        batch = Transition(*zip(*transitions))  # change data type from tuple
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                                 batch.state_new)), device=device, dtype=torch.uint8)
-        non_final_next_states = torch.cat([s for s in batch.state_new  if s is not None])
+        non_final_next_states = torch.cat([utils.rgb_image_to_tensor(s) for s in batch.state_new if s is not None])
         state_batch = torch.cat(batch.state_old)
         action_batch = torch.cat(batch.control)
         reward_batch = torch.cat(batch.reward)
-
 
     # # trainning with prioritized memory
     # for t in range(pretrain_iteration):[]
