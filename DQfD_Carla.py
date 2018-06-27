@@ -8,9 +8,15 @@ from collections import namedtuple
 import numpy as np
 import pandas as pd
 # pytorch
+
+from PIL import Image
+
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
+import torchvision.transforms as T
+
 
 # Carla
 # add carla to python path
@@ -23,12 +29,12 @@ from carla.settings import CarlaSettings
 
 
 # ----------------------------Parameters --------------------------------
-CAPACITY = 5000
-DEMO_SIZE = 2000
+CAPACITY = 4000
+DEMO_SIZE = 1000
 PLAY_SIZE = 3000
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
-FRAME_MAX = 1000  # if the agent has not arrived at the target within the given frames/time, demonstration fails.
-BATCH_SIZE = 128
+FRAME_MAX = 30  # if the agent has not arrived at the target within the given frames/time, demonstration fails.
+BATCH_SIZE = 15
 
 
 # ------------------------------Carla ------------------------------------
@@ -167,13 +173,14 @@ def carla_demo(client):
         # save all the measurement from frames
         measurement_list = []
         meas_old = None
-        images_old = None
+        state_old= None
 
         for frame in range(0, FRAME_MAX):
             print('Running at Frame ', frame)
 
             # read new measurement
             measurements, images_new = client.read_data()
+            state_new = images_new['CameraDepth']  # use the depth image only at experiment peoriod
 
             # cal control signal
             control = measurements.player_measurements.autopilot_control
@@ -192,7 +199,7 @@ def carla_demo(client):
             # calculate and save reward into memory
             if meas_old:
                 reward = cal_reward(meas_old, meas_new)
-                memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
+                memory.demopush(meas_old, state_old, control, reward, meas_new, state_new)
 
             # save image to disk
             for name, images in images_new.items():
@@ -201,7 +208,7 @@ def carla_demo(client):
 
             # save measurement
             measurement_list.append(meas_new)
-            meas_old, images_old = meas_new, images_new
+            meas_old, state_old = meas_new, state_new
 
             # check for end condition
             if done:
@@ -235,7 +242,6 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
 
 
 # the replay memory
@@ -247,6 +253,7 @@ class ExperienceReplay(object):
         self.playsize = playsize
         self.playmemory = []
         self.demomemory = []
+        self.position = 0
 
     def demopush(self, *args):
         if len(self.demomemory) < DEMO_SIZE:
@@ -255,22 +262,39 @@ class ExperienceReplay(object):
             return
 
     def playpush(self):
-        pass
+        if len(self.playmemory) < self.playsize:
+            self.playmemory.append(None)
+            #leave an empty space
+        self.memory[self.position] = Transition(*args)
+        self.position = (self.position + 1) % self.playsize
 
     def replaySample(self, batchsize):
         return random.sample(self.playmemory + self.demomemory, batchsize)
 
+    def demoSample(self, batchsize):
+        return random.sample(self.demomemory, batchsize)
 
-def loss():
+
+
+
+def select_action(state):  # state = images.rgb
+    global steps_done
+    sample = random.random()
+    eps_threshold = 0.5
+    steps_done += 1
+    if sample > eps_threshold:
+        with torch.no_grad():
+            return policy_net(state).max(1)[1].view(1, 1)  # return the throttle/the steer command
+    else:
+        return torch.tensor([[random.randrange(2)]], device=device, dtype=torch.long)
+
+
+def loss(self):
     pass
 
 
-def optimize_model(loss):
-    pass
 
-
-def select_action():
-    pass
+Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
 
 
 # Initialisation
@@ -281,6 +305,15 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
+n_pretrain=200
+
+
+
+
+#Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
+resize_image = T.Compose([T.ToPILImage(),
+                    T.Resize(600, interpolation=Image.CUBIC),
+                    T.ToTensor()])
 
 with make_carla_client('localhost', 2000) as client:
     print('Carla Client connected')
@@ -291,6 +324,19 @@ with make_carla_client('localhost', 2000) as client:
 
     carla_demo(client)
 
+    # ----------------------------pretrain --------------------------------
+
+    for steps in range(n_pretrain):
+        transitions = memory.demoSample(BATCH_SIZE)
+        batch = Transition(*zip(*transitions))  #change data type from tuple
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                                batch.state_new)), device=device, dtype=torch.uint8)
+        non_final_next_states = torch.cat([s for s in batch.state_new  if s is not None])
+        state_batch = torch.cat(batch.state_old)
+        action_batch = torch.cat(batch.control)
+        reward_batch = torch.cat(batch.reward)
+
+
     # # trainning with prioritized memory
-    # for t in range(pretrain_iteration):
+    # for t in range(pretrain_iteration):[]
     #     pass
