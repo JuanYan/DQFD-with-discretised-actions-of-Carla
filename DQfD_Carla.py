@@ -151,7 +151,7 @@ def cal_reward(meas_old, meas_new):
 
 def carla_demo(client):
     """
-    run carla and record the measurements, the images, and the control signals
+    DQfD_CartPole carla and record the measurements, the images, and the control signals
     :param client:
     :return:
     """

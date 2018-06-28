@@ -125,7 +125,7 @@ def carla_meas_pro(measurements):
     return meas, done
 
 
-# run carla and record the measurements, the images, and the control signals
+# DQfD_CartPole carla and record the measurements, the images, and the control signals
 def carla_demo(client):
     episode_num = 1
 

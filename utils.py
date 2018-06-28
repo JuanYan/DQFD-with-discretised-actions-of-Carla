@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import config
+import gym
 
 
 def lazy_property(func):
@@ -54,3 +55,4 @@ def plot_rgb_image(camera_rgb):
     plt.figure()
     plt.imshow(camera_rgb.data)
     plt.show()
+
