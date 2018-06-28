@@ -65,18 +65,18 @@ class SumTree:
         data_id = leaf_id - self.capacity + 1
         return leaf_id, self.priority_tree[leaf_id], self.data[data_id]
 
-    def set_priority(self, node_id, priority):
+    def set_priority(self, leaf_id, priority):
         """
         set priority of a node in a tree
-        :param node_id: id in the tree
+        :param leaf_id: id in the tree
         :param priority: new priority
         :return: None
         """
-        priority_change = priority - self.priority_tree[node_id]  # priority change
-        self.priority_tree[node_id] = priority  # update priority of node
-        while node_id != 0:  # loop to change all parent node priority as well
-            node_id = (node_id - 1) // 2  # parent node id
-            self.priority_tree[node_id] += priority_change  # increase parent node priorities as well
+        priority_change = priority - self.priority_tree[leaf_id]  # priority change
+        self.priority_tree[leaf_id] = priority  # update priority of node
+        while leaf_id != 0:  # loop to change all parent node priority as well
+            leaf_id = (leaf_id - 1) // 2  # parent node id
+            self.priority_tree[leaf_id] += priority_change  # increase parent node priorities as well
 
     @property
     def total_priority(self):
@@ -85,6 +85,10 @@ class SumTree:
     @property
     def priorities(self):
         return self.priority_tree[-self.capacity:]
+
+    @property
+    def data_size(self):
+        return self.data[0].size
 
 
 class Memory:
@@ -137,7 +141,7 @@ class Memory:
 
         # sampled data
         batch_id = np.empty((batch_size,), dtype=np.int32)
-        batch_memory = np.empty((batch_size, self.sum_tree.data[0].size), dtype=object)
+        batch_data = np.empty((batch_size, self.sum_tree.data_size), dtype=object)
         batch_weight = np.empty((batch_size, 1))
 
         # divide priority into batches
@@ -150,16 +154,16 @@ class Memory:
 
         for i in range(batch_size):
             v = np.random.uniform(pri_seg * i, pri_seg * (i + 1))
-            batch_id[i], priority, batch_memory[i] = self.sum_tree.get_data(v)  # note: id is the index in sum tree
-            prob = priority / self.sum_tree.total_priority
-            batch_weight[i, 0] = np.power(prob / min_prob, -self.beta)  # TODO: -beta_0?
-        return batch_id, batch_memory, batch_weight
+            batch_id[i], priority, batch_data[i] = self.sum_tree.get_data(v)  # note: id is the index in sum tree
+            prob = priority / self.sum_tree.total_priority  # P(i)
+            batch_weight[i, 0] = np.power(prob / min_prob, -self.beta)
+        return batch_id, batch_data, batch_weight
 
     def batch_update(self, tree_ids, abs_errors):
         """
         convert the importance of TD error to priority
         :param tree_ids:
-        :param abs_errors:
+        :param abs_errors: abs TD error
         :return:
         """
         abs_errors[self.permanent_size:] += self.epsilon
