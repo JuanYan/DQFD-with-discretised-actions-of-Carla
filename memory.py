@@ -114,7 +114,7 @@ class Memory:
         return len(self.sum_tree)
 
     @property
-    def full(self):
+    def is_full(self):
         return self.sum_tree.full
 
     def push(self, transition):
@@ -136,7 +136,7 @@ class Memory:
         :param batch_size:
         :return:
         """
-        if not self.full:
+        if not self.is_full:
             raise RuntimeError("Sampling should not execute when not full with capacity %d" % self.sum_tree.capacity)
 
         # sampled data

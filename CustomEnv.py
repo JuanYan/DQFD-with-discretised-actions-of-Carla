@@ -20,10 +20,11 @@ class CartPoleEnv:
         :param action:
         :return: next_state, reward, done, info
         """
+        self.env.render()
         return self.env.step(action)
 
     def reset(self):
-        self.env.reset()
+        return self.env.reset()
 
     @property
     def action_dim(self):
