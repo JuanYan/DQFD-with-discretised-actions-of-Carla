@@ -5,19 +5,20 @@ Wrap gym and Carla into common interface
 import gym
 import random
 import numpy as np
-from carla.client import make_carla_client
+import subprocess
+from carla.client import CarlaClient
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
-
+import time
 import config
+import ipdb
 
-
-class CartPoleEnv:
-    def __init__(self):
+class GymEnv:
+    def __init__(self, name="CartPole-v1"):
         """
         A custom env represent an env
         """
-        self.env = gym.make("CartPole-v1")
+        self.env = gym.make(name)
         self.reset()
 
     def step(self, action):
@@ -50,7 +51,12 @@ class CartPoleEnv:
 
 class CarlaEnv:
     def __init__(self, target):
-        self.carla_client = make_carla_client(config.CARLA_HOST_ADDRESS, 2000)
+        if config.CARLA_HOST_ADDRESS =='localhost':
+            self.carla_process = subprocess.Popen([config.CARLA_CMD_PATH, config.CARLA_CMD_ARGS],)
+        else:
+            self.carla_process = None
+        self.carla_client = CarlaClient(config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
+        self.carla_client.connect()
         self.target = target
 
     def step(self, action):
@@ -184,7 +190,20 @@ class CarlaEnv:
 
         :return:
         """
-        self.carla_client.close()
+        if self.carla_process:
+            i = 0
+            while True: # try to close multi times
+                self.carla_process.terminate()
+                time.sleep(5)
+                if self.carla_process.poll() is None: # None means running
+                    i+=1
+                else:
+                    break
+                if i>=5:
+                    print("Carla process close failed")
+                    break
+
+        self.carla_client.disconnect()
 
     @property
     def action_dim(self):
