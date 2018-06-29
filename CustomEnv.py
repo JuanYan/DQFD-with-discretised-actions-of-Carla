@@ -59,7 +59,7 @@ class CarlaEnv:
         self.carla_client.connect()
         self.target = target
 
-    def step(self, action):
+    def step(self, action, meas_old):
         """
 
         :param action:
@@ -70,9 +70,10 @@ class CarlaEnv:
         meas_new, done = self._carla_meas_pro(measurements)
 
         next_state = images_new
-        reward = 0  # TODO:
-        # reward = self._cal_reward(meas_old, meas_new)
-        return next_state, reward, done, {}
+        #Todo: Checkup the reward function with the images
+        reward = self._cal_reward(meas_old, meas_new)
+
+        return meas_new, next_state, reward, done, {}
 
     def reset(self):
         """
