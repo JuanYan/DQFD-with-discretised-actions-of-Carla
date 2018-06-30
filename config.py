@@ -4,18 +4,9 @@ Common configuration parameters
 """
 USE_CUDA = False # to use GPU or not, False will disable using GPU even if available
 # ----------------------------- Carla ----------------------------------------------
-
-
-# --------------- Carla on remote-------------------
 # CARLA_HOST_ADDRESS = "192.168.1.98" # Carla host address
-# CARLA_HOST_USER = "user" # Carla host user name for ssh
-# CARLA_HOST_PASSWORD = "password"  # Carla host password for ssh
-# --------------- Carla on local-------------------
 # Carla on local machine, use 'localhost'
 CARLA_HOST_ADDRESS = "localhost"
-# ----------------Common settings-----------------
-CARLA_CMD_PATH = r"C:\Users\Public\Documents\CARLA_0.8.4\CarlaUE4.exe"
-CARLA_CMD_ARGS = "-carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600"
 CARLA_HOST_PORT = 2000 # Port number
 
 # CARLA image shape after resize

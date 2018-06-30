@@ -2,78 +2,34 @@
 """
 Wrap gym and Carla into common interface
 """
-import gym
 import random
 import numpy as np
-import subprocess
 from carla.client import CarlaClient
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
-import time
+
 import config
-import ipdb
-
-class GymEnv:
-    def __init__(self, name="CartPole-v1"):
-        """
-        A custom env represent an env
-        """
-        self.env = gym.make(name)
-        self.reset()
-
-    def step(self, action):
-        """
-
-        :param action:
-        :return: next_state, reward, done, info
-        """
-        self.env.render()
-        return self.env.step(action)
-
-    def reset(self):
-        return self.env.reset()
-
-    @property
-    def action_dim(self):
-        return self.env.action_space.n
-
-    @property
-    def state_dim(self):
-        """
-
-        :return:
-        """
-        return self.env.observation_space.shape[0]
-
-    def close(self):
-        self.env.close()
 
 
 class CarlaEnv:
     def __init__(self, target):
-        if config.CARLA_HOST_ADDRESS =='localhost':
-            self.carla_process = subprocess.Popen([config.CARLA_CMD_PATH, config.CARLA_CMD_ARGS],)
-        else:
-            self.carla_process = None
-        self.carla_client = CarlaClient(config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
+        self.carla_client = CarlaClient(
+            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
         self.carla_client.connect()
         self.target = target
+        self.pre_measurement = None
+        self.cur_measurement = None
 
-    def step(self, action, meas_old):
+    def step(self, action):
         """
-
         :param action:
         :return: next_state, reward, done, info
         """
         self.carla_client.send_control(action)
-        measurements, images_new = self.carla_client.read_data()
-        meas_new, done = self._carla_meas_pro(measurements)
-
-        next_state = images_new
-        #Todo: Checkup the reward function with the images
-        reward = self._cal_reward(meas_old, meas_new)
-
-        return meas_new, next_state, reward, done, {}
+        measurements, raw_sensor = self.carla_client.read_data()
+        # Todo: Checkup the reward function with the images
+        reward, done = self.cal_reward(measurements)
+        return raw_sensor, reward, done, {}
 
     def reset(self):
         """
@@ -121,27 +77,29 @@ class CarlaEnv:
         # define the starting point of the agent
         player_start = 140
         self.carla_client.start_episode(player_start)
-        print('Starting new episode at %r, %d...' % (scene.map_name, player_start))
+        print('Starting new episode at %r, %d...' %
+              (scene.map_name, player_start))
 
         # TODO: read and return status after reset
         return
 
-    def _carla_meas_pro(self, measurements):
+    def extract_measurements(self, measurements):
         """
-
+        extract custom measurement data from carla measurement
         :param measurements:
-        :return:
+        :return: custom measurement data dict
         """
-        pos_x = measurements.player_measurements.transform.location.x
-        pos_y = measurements.player_measurements.transform.location.y
-        speed = measurements.player_measurements.forward_speed * 3.6  # m/s -> km/h
-        col_cars = measurements.player_measurements.collision_vehicles
-        col_ped = measurements.player_measurements.collision_pedestrians
-        col_other = measurements.player_measurements.collision_other
-        other_lane = 100 * measurements.player_measurements.intersection_otherlane
-        offroad = 100 * measurements.player_measurements.intersection_offroad
+        p_meas = measurements.player_measurements
+        pos_x = p_meas.transform.location.x
+        pos_y = p_meas.transform.location.y
+        speed = p_meas.forward_speed * 3.6  # m/s -> km/h
+        col_cars = p_meas.collision_vehicles
+        col_ped = p_meas.collision_pedestrians
+        col_other = p_meas.collision_other
+        other_lane = 100 * p_meas.intersection_otherlane
+        offroad = 100 * p_meas.intersection_offroad
         agents_num = len(measurements.non_player_agents)
-
+        distance = np.linalg.norm(np.array([pos_x, pos_y]) - self.target)
         meas = {
             'pos_x': pos_x,
             'pos_y': pos_y,
@@ -150,74 +108,47 @@ class CarlaEnv:
             'other_lane': other_lane,
             'offroad': offroad,
             'agents_num': agents_num,
+            'distance': distance
         }
-
-        message = 'Vehicle at ({:.1f}, {:.1f}), '
-        message += '{:.0f} km/h, '
-        message += 'Collision: {{vehicles={:.0f}, pedestrians={:.0f}, other={:.0f}}}, '
-        message += '{:.0f}% other lane, {:.0f}% off-road, '
-        message += '({:d} non-player agents in the scene)'
-        message = message.format(pos_x, pos_y, speed, col_cars, col_ped, col_other, other_lane, offroad, agents_num)
+        message = 'Vehicle at %.1f, %.1f, ' % (pos_x, pos_y)
+        message += '%.0f km/h, ' % (speed,)
+        message += 'Collision: vehicles=%.0f, pedestrians=%.0f, other=%.0f, ' % (col_cars, col_ped, col_other,)
+        message += '%.0f%% other lane, %.0f%% off-road, ' % (other_lane, offroad,)
+        message += '%d non-player agents in the scene.' % (agents_num,)
         print(message)
 
-        pose = np.array([pos_x, pos_y])
-        dis = np.linalg.norm(pose - self.target)
+        return meas
 
-        if dis < 1:
-            done = 1  # final state arrived!
-        else:
-            done = 0
-
-        meas['dis'] = dis  # distance to target
-
-        return meas, done
-
-    def _cal_reward(self, meas_old, meas_new):
+    def cal_reward(self, measurements):
         """
 
-        :param meas_old:
-        :param meas_new:
-        :return:
+        :param measurements:
+        :return: reward, done
         """
+        assert measurements
+        extracted_measurement = self.extract_measurements(measurements)
+        self.pre_measurement, self.cur_measurement = self.cur_measurement, extracted_measurement
+
+        # TODO: reward for the measurement, no previous measurement
+        if self.pre_measurement is None:
+            return 0, False
 
         def delta(key):
-            return meas_old[key] - meas_new[key]
+            return self.pre_measurement[key] - self.cur_measurement[key]
 
-        return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
-               - 2 * delta('offroad') - 2 * delta('other_lane')
+        def reward_func():
+            return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+                   - 2 * delta('offroad') - 2 * delta('other_lane')
+
+        # check distance to target
+        done = extracted_measurement['distance'] < 1  # final state arrived or not
+
+        return reward_func(), done
 
     def close(self):
         """
 
         :return:
         """
-        if self.carla_process:
-            i = 0
-            while True: # try to close multi times
-                self.carla_process.terminate()
-                time.sleep(5)
-                if self.carla_process.poll() is None: # None means running
-                    i+=1
-                else:
-                    break
-                if i>=5:
-                    print("Carla process close failed")
-                    break
-
         self.carla_client.disconnect()
 
-    @property
-    def action_dim(self):
-        """
-
-        :return:
-        """
-        return 0
-
-    @property
-    def state_dim(self):
-        """
-
-        :return:
-        """
-        return 0

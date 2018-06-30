@@ -29,7 +29,12 @@
 
 - Steps as follows
 
-1. Call Carla by $./CarlaUE4.sh /Game/Maps/Town01 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 
+1. Call Carla by 
+
+	```
+	./CarlaUE4.sh /Game/Maps/Town01 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 
+	```
+
 2. Run the dqfd.py file with python. 
 
 

@@ -4,6 +4,7 @@ import pickle
 import itertools
 import collections
 import torch
+import gym
 import config
 from DQfD_model import Agent, Transition
 from CustomEnv import GymEnv
@@ -26,7 +27,7 @@ def load_demo(demo_file):
 
 def dqfd_eval():
     # create gym env
-    env = GymEnv()
+    env = gym.make("CartPole-v1")
     # load demo transitions
     demo_transitions = load_demo(config.DEMO_PICKLE_FILE)
 
