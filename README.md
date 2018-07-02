@@ -35,7 +35,7 @@
 	./CarlaUE4.sh /Game/Maps/Town01 -carla-server -benchmark -fps=15 -windowed -ResX=800 -ResY=600 
 	```
 
-2. Run the dqfd.py file with python. 
+2. Run the DQfD_env.py file with python. 
 
 
 
