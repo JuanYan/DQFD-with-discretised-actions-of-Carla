@@ -14,7 +14,7 @@ import config
 class CarlaEnv:
     def __init__(self, target):
         self.carla_client = CarlaClient(
-            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
+            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT, 15)
         self.carla_client.connect()
         self.target = target
         self.pre_measurement = None
@@ -25,6 +25,10 @@ class CarlaEnv:
         :param action:
         :return: next_state, reward, done, info
         """
+        action = {'pedal':12,
+                  'steer':10}
+
+        if action[p]
         self.carla_client.send_control(action)
         measurements, raw_sensor = self.carla_client.read_data()
         # Todo: Checkup the reward function with the images
