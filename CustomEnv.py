@@ -4,6 +4,7 @@ Wrap gym and Carla into common interface
 """
 import random
 import numpy as np
+import pandas as pd
 from carla.client import CarlaClient
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
@@ -14,26 +15,25 @@ import config
 class CarlaEnv:
     def __init__(self, target):
         self.carla_client = CarlaClient(
-            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT, 15)
+            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
         self.carla_client.connect()
         self.target = target
-        self.pre_measurement = None
-        self.cur_measurement = None
+        self.pre_image = None
+        self.cur_image = None
+        self.pre_measurements = None
+        self.cur_measurements = None
 
     def step(self, action):
         """
         :param action:
         :return: next_state, reward, done, info
         """
-        action = {'pedal':12,
-                  'steer':10}
-
-        if action[p]
         self.carla_client.send_control(action)
-        measurements, raw_sensor = self.carla_client.read_data()
+        measurements, self.cur_image = self.carla_client.read_data()
+        self.cur_measurements = self.extract_measurements(measurements)
         # Todo: Checkup the reward function with the images
-        reward, done = self.cal_reward(measurements)
-        return raw_sensor, reward, done, {}
+        reward, done = self.cal_reward()
+        return self.cur_measurements, self.cur_image, reward, done, measurements
 
     def reset(self):
         """
@@ -58,25 +58,27 @@ class CarlaEnv:
         settings.add_sensor(camera0)
 
         # Let's add another camera producing ground-truth depth.
-        camera1 = Camera('CameraDepth', PostProcessing='Depth')
-        camera1.set_image_size(800, 600)
-        camera1.set_position(0.30, 0, 1.30)
-        settings.add_sensor(camera1)
+        # camera1 = Camera('CameraDepth', PostProcessing='Depth')
+        # camera1.set_image_size(800, 600)
+        # camera1.set_position(0.30, 0, 1.30)
+        # settings.add_sensor(camera1)
 
         # LIDAR
-        lidar = Lidar('Lidar32')
-        lidar.set_position(0, 0, 2.50)
-        lidar.set_rotation(0, 0, 0)
-        lidar.set(
-            Channels=32,
-            Range=50,
-            PointsPerSecond=100000,
-            RotationFrequency=10,
-            UpperFovLimit=10,
-            LowerFovLimit=-30)
-        settings.add_sensor(lidar)
+        # lidar = Lidar('Lidar32')
+        # lidar.set_position(0, 0, 2.50)
+        # lidar.set_rotation(0, 0, 0)
+        # lidar.set(
+        #     Channels=32,
+        #     Range=50,
+        #     PointsPerSecond=100000,
+        #     RotationFrequency=10,
+        #     UpperFovLimit=10,
+        #     LowerFovLimit=-30)
+        # settings.add_sensor(lidar)
 
         scene = self.carla_client.load_settings(settings)
+        self.pre_state = None
+        self.cur_state = None
 
         # define the starting point of the agent
         player_start = 140
@@ -123,31 +125,103 @@ class CarlaEnv:
 
         return meas
 
-    def cal_reward(self, measurements):
+    def cal_reward(self):
         """
-
-        :param measurements:
+        :param
         :return: reward, done
         """
-        assert measurements
-        extracted_measurement = self.extract_measurements(measurements)
-        self.pre_measurement, self.cur_measurement = self.cur_measurement, extracted_measurement
 
-        # TODO: reward for the measurement, no previous measurement
-        if self.pre_measurement is None:
-            return 0, False
+        if self.pre_measurements is None:
+            return 0.0, False
 
         def delta(key):
-            return self.pre_measurement[key] - self.cur_measurement[key]
+            return self.pre_measurements[key] - self.cur_measurements[key]
 
         def reward_func():
-            return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+            return 1000 * delta('distance') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
                    - 2 * delta('offroad') - 2 * delta('other_lane')
 
         # check distance to target
-        done = extracted_measurement['distance'] < 1  # final state arrived or not
+        done = self.cur_measurements['distance'] < 1  # final state arrived or not
 
         return reward_func(), done
+
+
+    def carla_demo(self):
+        """
+        DQfD_CartPole carla and record the measurements, the images, and the control signals
+        :param
+        :return:
+        """
+        global memory
+
+        # file name format to save images
+        out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
+
+        for episode in range(0, config.CARLA_DEMO_EPISODE):
+            # re-init client for each episode
+            self.reset()
+            # save all the measurement from frames
+            measurements_list = []
+            action_list=[]
+            reward_list=[]
+
+            for frame in range(0, config.CARLA_DEMO_FRAME):
+                print('Running at Frame ', frame)
+
+                if self.pre_measurements:
+                    action = measurements.player_measurements.autopilot_control
+                    action.steer += random.uniform(-0.1, 0.1)
+                else:
+                    action={
+                        'steer':0.0,
+                        'throttle':0.0,
+                        'brake':0.0
+                    }
+
+                self.cur_measurements, self.cur_image, reward, done, measurements = self.step(action)
+                action_list.append(action)
+                reward_list.append(reward)
+                measurements_list.append(self.cur_measurements)
+
+                # client.send_control(
+                #     steer=random.uniform(-1.0, 1.0),
+                #     throttle=0.5,
+                #     brake=0.0,
+                #     hand_brake=False,
+                #     reverse=False)
+
+                # calculate and save reward into memory
+                if self.pre_measurements:
+
+                    #push demo memory
+                    pass
+
+
+                # save image to disk
+                for name, images in self.cur_image.items():
+                    filename = out_filename_format.format(episode, name, frame)
+                    images.save_to_disk(filename)
+
+                self.pre_measurements, self.pre_image = self.cur_measurements, self.cur_image
+
+                # check for end condition
+                if done:
+                    print('Target achieved!')
+                    break
+
+            if not done:
+                print("Target not achieved!")
+
+            # save measurements and actions
+            measurement_df = pd.DataFrame(measurements_list)
+            measurement_df.to_csv('_measurements%d.csv' % episode)
+            action_df = pd.DataFrame(action_list)
+            action_df.to_csv('_actions%d.csv' % episode)
+            reward_df = pd.DataFrame(reward_list)
+            reward_df.to_csv('_reward%d.csv' % episode)
+
+
 
     def close(self):
         """

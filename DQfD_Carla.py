@@ -22,6 +22,7 @@ if sys.platform == "linux":
 from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
+from CustomEnv import CarlaEnv
 
 # ----------------------------Parameters --------------------------------
 CAPACITY = 4000
@@ -301,26 +302,24 @@ resize_image = T.Compose([T.ToPILImage(),
                           T.Resize(600, interpolation=Image.CUBIC),
                           T.ToTensor()])
 
-with make_carla_client(config.CARLA_HOST_ADDRESS, 2000) as client:
-    print('Carla Client connected')
+# with make_carla_client(config.CARLA_HOST_ADDRESS, 2000) as client:
+#     print('Carla Client connected')
+#     carla_demo(client)
+
+
+exp = CarlaEnv(TARGET)
+exp.carla_demo()
 
     # pre-trainning with only demonstration transitions
     # pretrain_iteration = 100
     # update_frequency = 20
 
-    carla_demo(client)
+
+
 
     # ----------------------------pretrain --------------------------------
 
-    for steps in range(n_pretrain):
-        transitions = memory.demoSample(BATCH_SIZE)
-        batch = Transition(*zip(*transitions))  # change data type from tuple
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                                batch.state_new)), device=device, dtype=torch.uint8)
-        non_final_next_states = torch.cat([utils.rgb_image_to_tensor(s) for s in batch.state_new if s is not None])
-        state_batch = torch.cat(batch.state_old)
-        action_batch = torch.cat(batch.control)
-        reward_batch = torch.cat(batch.reward)
+
 
     # # trainning with prioritized memory
     # for t in range(pretrain_iteration):[]

@@ -13,6 +13,12 @@ CARLA_HOST_PORT = 2000 # Port number
 CARLA_IMG_HEIGHT = 60
 CARLA_IMG_WIDTH = 80
 
+#CARLA demo
+CARLA_DEMO_EPISODE = 1
+CARLA_DEMO_FRAME = 100
+
+
+
 # ----------------------------- DQfD ----------------------------------------------
 PRE_TRAIN_STEP_NUM = 500  # DQfD pre-training step number
 
