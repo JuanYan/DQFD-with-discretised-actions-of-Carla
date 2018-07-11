@@ -1,210 +1,80 @@
 #  -*- coding: utf-8 -*-
 
-import random
+
 import sys
-from collections import namedtuple
-import numpy as np
-import pandas as pd
-from PIL import Image
+import pickle
+import itertools
+import collections
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-import torchvision.transforms as T
 import config
-import utils
+import pandas as pd
+from DQfD_model import Agent, Transition
+from memory import Memory, SumTree
 
 # Carla
 # add carla to python path
 if sys.platform == "linux":
     sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')
 
-from carla.client import make_carla_client
-from carla.sensor import Camera, Lidar
-from carla.settings import CarlaSettings
 from CustomEnv import CarlaEnv
 
-# ----------------------------Parameters --------------------------------
-CAPACITY = 4000
-DEMO_SIZE = 1000
-PLAY_SIZE = 3000
-TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
-FRAME_MAX = 30  # if the agent has not arrived at the target within the given frames/time, demonstration fails.
-BATCH_SIZE = 15
 
-
-# ------------------------------Carla ------------------------------------
-
-# The environment provides s, a, r(s), and transition s'
-# a=[0,1] referring to moving left and right. s is represented by the current screen pixes subtracting the previous screen pixes.
-
-def carla_init(client):
-    """
-
-    :param client:
-    :return:
-    """
-    settings = CarlaSettings()
-    settings.set(
-        SynchronousMode=True,
-        SendNonPlayerAgentsInfo=True,
-        NumberOfVehicles=20,
-        NumberOfPedestrians=40,
-        WeatherId=random.choice([1, 3, 7, 8, 14]),
-        QualityLevel='Epic')
-
-    # CAMERA
-    camera0 = Camera('CameraRGB')
-    # Set image resolution in pixels.
-    camera0.set_image_size(800, 600)
-    # Set its position relative to the car in meters.
-    camera0.set_position(0.30, 0, 1.30)
-    settings.add_sensor(camera0)
-
-    # Let's add another camera producing ground-truth depth.
-    camera1 = Camera('CameraDepth', PostProcessing='Depth')
-    camera1.set_image_size(800, 600)
-    camera1.set_position(0.30, 0, 1.30)
-    settings.add_sensor(camera1)
-
-    # LIDAR
-    lidar = Lidar('Lidar32')
-    lidar.set_position(0, 0, 2.50)
-    lidar.set_rotation(0, 0, 0)
-    lidar.set(
-        Channels=32,
-        Range=50,
-        PointsPerSecond=100000,
-        RotationFrequency=10,
-        UpperFovLimit=10,
-        LowerFovLimit=-30)
-    settings.add_sensor(lidar)
-
-    scene = client.load_settings(settings)
-
-    # define the starting point of the agent
-    player_start = 140
-    client.start_episode(player_start)
-    print('Starting new episode at %r, %d...' % (scene.map_name, player_start))
-
-
-def carla_meas_pro(measurements):
-    """
-
-    :param measurements:
-    :return:
-    """
-    pos_x = measurements.player_measurements.transform.location.x
-    pos_y = measurements.player_measurements.transform.location.y
-    speed = measurements.player_measurements.forward_speed * 3.6  # m/s -> km/h
-    col_cars = measurements.player_measurements.collision_vehicles
-    col_ped = measurements.player_measurements.collision_pedestrians
-    col_other = measurements.player_measurements.collision_other
-    other_lane = 100 * measurements.player_measurements.intersection_otherlane
-    offroad = 100 * measurements.player_measurements.intersection_offroad
-    agents_num = len(measurements.non_player_agents)
-
-    meas = {
-        'pos_x': pos_x,
-        'pos_y': pos_y,
-        'speed': speed,
-        'col_damage': col_cars + col_ped + col_other,
-        'other_lane': other_lane,
-        'offroad': offroad,
-        'agents_num': agents_num,
-    }
-
-    message = 'Vehicle at ({:.1f}, {:.1f}), '
-    message += '{:.0f} km/h, '
-    message += 'Collision: {{vehicles={:.0f}, pedestrians={:.0f}, other={:.0f}}}, '
-    message += '{:.0f}% other lane, {:.0f}% off-road, '
-    message += '({:d} non-player agents in the scene)'
-    message = message.format(pos_x, pos_y, speed, col_cars, col_ped, col_other, other_lane, offroad, agents_num)
-    print(message)
-
-    pose = np.array([pos_x, pos_y])
-    dis = np.linalg.norm(pose - TARGET)
-
-    if dis < 1:
-        done = 1  # final state arrived!
-    else:
-        done = 0
-
-    meas['dis'] = dis  # distance to target
-
-    return meas, done
-
-
-def cal_reward(meas_old, meas_new):
-    """
-
-    :param meas_old:
-    :param meas_new:
-    :return:
-    """
-
-    def delta(key):
-        return meas_old[key] - meas_new[key]
-
-    return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
-           - 2 * delta('offroad') - 2 * delta('other_lane')
-
-
-def carla_demo(client):
+def carla_demo(exp):
     """
     DQfD_CartPole carla and record the measurements, the images, and the control signals
-    :param client:
+    :param
     :return:
     """
-    global memory
-
-    episode_num = 1
+    demomem = Memory(config.DEMO_BUFFER_SIZE)
 
     # file name format to save images
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
 
-    for episode in range(0, episode_num):
+    for episode in range(0, config.CARLA_DEMO_EPISODE):
         # re-init client for each episode
-        carla_init(client)
+        exp.reset()
         # save all the measurement from frames
-        measurement_list = []
-        meas_old = None
-        state_old = None
+        measurements_list = []
+        action_list = []
+        reward_list = []
 
-        for frame in range(0, FRAME_MAX):
+        for frame in range(0, config.CARLA_DEMO_FRAME):
             print('Running at Frame ', frame)
 
-            # read new measurement
-            measurements, images_new = client.read_data()
-            state_new = images_new['CameraRGB']  # use the depth image only at experiment peoriod
+            if not exp.pre_measurements:
+                action = None
+            else:
+                control = measurements.player_measurements.autopilot_control
+                action_no, action = exp.action_discretize(control)
+                actionprint = {
+                    'action_number': action_no,
+                    'steer': action.steer,
+                    'throttle': action.throttle,
+                    'brake': action.brake
+                }
+                action_list.append(actionprint)
 
-            # cal control signal
-            control = measurements.player_measurements.autopilot_control
-            control.steer += random.uniform(-0.1, 0.1)
-            client.send_control(control)
-            # client.send_control(
-            #     steer=random.uniform(-1.0, 1.0),
-            #     throttle=0.5,
-            #     brake=0.0,
-            #     hand_brake=False,
-            #     reverse=False)
+            exp.cur_measurements, exp.cur_image, reward, done, measurements = exp.step(action)
+            reward_list.append(reward)
+            measurements_list.append(exp.cur_measurements)
 
-            # cal measurement
-            meas_new, done = carla_meas_pro(measurements)
 
             # calculate and save reward into memory
-            if meas_old:
-                reward = cal_reward(meas_old, meas_new)
-                memory.demopush(meas_old, state_old, control, reward, meas_new, state_new)
+            # Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'n_reward'))
+
+            if exp.pre_measurements:
+                pre_state = [exp.pre_measurements, exp.pre_image]
+                cur_state = [exp.cur_measurements, exp.cur_image]
+                transition = Transition(pre_state, action_no, cur_state, reward, torch.zeros(1))
+                demomem.push(transition)
 
             # save image to disk
-            for name, images in images_new.items():
+            for name, images in exp.cur_image.items():
                 filename = out_filename_format.format(episode, name, frame)
                 images.save_to_disk(filename)
 
-            # save measurement
-            measurement_list.append(meas_new)
-            meas_old, state_old = meas_new, state_new
+            # Todo: remember to do the same in the self exploring part
+            exp.pre_measurements, exp.pre_image = exp.cur_measurements, exp.cur_image
 
             # check for end condition
             if done:
@@ -214,101 +84,88 @@ def carla_demo(client):
         if not done:
             print("Target not achieved!")
 
-        measurement_df = pd.DataFrame(measurement_list)
+        # save measurements, actions and rewards
+        measurement_df = pd.DataFrame(measurements_list)
         measurement_df.to_csv('_measurements%d.csv' % episode)
+        action_df = pd.DataFrame(action_list)
+        action_df.to_csv('_actions%d.csv' % episode)
+        reward_df = pd.DataFrame(reward_list)
+        reward_df.to_csv('_reward%d.csv' % episode)
+
+    return demomem
+
+# #
+# def dqfd_eval():
+#     # create Carla env
+#
+#     # load demo transitions
+#     demo_transitions = load_demo(config.DEMO_PICKLE_FILE)
+#
+#     # use the demo data to pre-train network
+#     agent = Agent(demo_transitions = demo_transitions)
+#     agent.pre_train()
+#
+#     # training loop
+#     episode, replay_full_episode = 0, None
+#     for i_episode in range(config.EPISODE_NUM):
+#         done, n_reward, state = False, None, env.reset()
+#         transitions = []
+#         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
+#         for step in itertools.count(10):
+#             action = agent.e_greedy_select_action(state)
+#             next_state, reward, done, info = env.step(action)
+#             reward = torch.Tensor([reward])
+#
+#             # storing transition in a temporary replay buffer in order to calculate n-step returns
+#             transitions.insert(0, Transition(state, action, next_state, reward, torch.zeros(1)))
+#             state = next_state
+#             gamma = 1
+#             new_trans = []
+#             for trans in transitions:
+#                 new_trans.append(trans._replace(n_reward=trans.n_reward + gamma * reward))
+#                 gamma = gamma * config.Q_GAMMA
+#             transitions = new_trans
+#
+#             # if the episode isn't over, get the next q val and add the 10th transition to the replay buffer
+#             # otherwise push all transitions to the buffer
+#             if not done:
+#                 q_val = agent.policy_net(torch.from_numpy(next_state)).data
+#                 if len(transitions) >= 10:
+#                     last_trans = transitions.pop()
+#                     last_trans = last_trans._replace(n_reward=last_trans.n_reward + gamma * q_val.max(1)[0].cpu())
+#                     agent.replay_memory.push(last_trans)
+#                 state = next_state
+#
+#             else:
+#                 for trans in transitions:
+#                     agent.replay_memory.push(trans)
+#
+#             if agent.replay_memory.is_full:
+#                 # TODO: check again
+#                 agent.train()
+#
+#             if done:
+#                 print("episode: %d, memory length: %d  epsilon: %f" % (i_episode, len(agent.replay_memory), agent.epsilon))
+#                 break
+#
+#         # Update the target network
+#         if i_episode % 100 == 0:
+#             agent.update_target_net()
+#     env.close()
 
 
-# Use pytorch to define the deep CNN for target network and policy network
-class DQN(nn.Module):
+if __name__ == "__main__":
+    # dqfd_eval()
 
-    def __init__(self):
-        super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
-        self.head = nn.Linear(448, 2)
-
-    def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        return self.head(x.view(x.size(0), -1))
+    exp = CarlaEnv(config.TARGET)
+    demomem = carla_demo(exp)
+    # agent = Agent(demo_transitions = demo_transitions)
+    # agent.pre_train()
 
 
-# the replay memory
-class ExperienceReplay(object):
-
-    def __init__(self, capacity, demosize, playsize):
-        self.capacity = capacity
-        self.demosize = demosize
-        self.playsize = playsize
-        self.playmemory = []
-        self.demomemory = []
-        self.position = 0
-
-    def demopush(self, *args):
-        if len(self.demomemory) < DEMO_SIZE:
-            self.demomemory.append(Transition(*args))
-        else:
-            return
-
-    def playpush(self, *args):
-        if len(self.playmemory) < self.playsize:
-            self.playmemory.append(None)
-            # leave an empty space
-        self.memory[self.position] = Transition(*args)
-        self.position = (self.position + 1) % self.playsize
-
-    def replaySample(self, batchsize):
-        return random.sample(self.playmemory + self.demomemory, batchsize)
-
-    def demoSample(self, batchsize):
-        return random.sample(self.demomemory, batchsize)
 
 
-def select_action(state):  # state = images.rgb
-    global steps_done
-    sample = random.random()
-    eps_threshold = 0.5
-    steps_done += 1
-    if sample > eps_threshold:
-        with torch.no_grad():
-            return policy_net(state).max(1)[1].view(1, 1)  # return the throttle/the steer command
-    else:
-        return torch.tensor([[random.randrange(2)]], device=device, dtype=torch.long)
 
-
-def loss(self):
-    pass
-
-
-Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
-
-# Initialisation
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-policy_net = DQN().to(device)
-target_net = DQN().to(device)
-target_net.load_state_dict(policy_net.state_dict())
-target_net.eval()
-
-memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
-n_pretrain = 200
-
-# Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
-resize_image = T.Compose([T.ToPILImage(),
-                          T.Resize(600, interpolation=Image.CUBIC),
-                          T.ToTensor()])
-
-# with make_carla_client(config.CARLA_HOST_ADDRESS, 2000) as client:
-#     print('Carla Client connected')
-#     carla_demo(client)
-
-
-exp = CarlaEnv(TARGET)
-exp.carla_demo()
 
     # pre-trainning with only demonstration transitions
     # pretrain_iteration = 100
