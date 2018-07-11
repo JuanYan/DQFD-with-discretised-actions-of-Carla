@@ -5,6 +5,7 @@ Wrap gym and Carla into common interface
 import random
 import numpy as np
 import pandas as pd
+import math
 from carla.client import CarlaClient
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
@@ -169,31 +170,37 @@ class CarlaEnv:
             for frame in range(0, config.CARLA_DEMO_FRAME):
                 print('Running at Frame ', frame)
 
-                if self.pre_measurements:
-                    action = measurements.player_measurements.autopilot_control
-                    action.steer += random.uniform(-0.1, 0.1)
+                if not self.pre_measurements:
+                    action=None
+
                 else:
-                    action={
-                        'steer':0.0,
-                        'throttle':0.0,
-                        'brake':0.0
+                    action = measurements.player_measurements.autopilot_control
+                    # action.steer += random.uniform(-0.1, 0.1)
+
+                    #discretise the action space
+                    print('Before processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
+                    action.steer, action.throttle, action.brake))
+                    steer = int(10 * action.steer)
+                    throttle = int(action.throttle / 0.5)  # action.throttle= 0, 0.5 or 1.0
+                    brake = int(action.brake)  # action.brake=0 or 1.0
+                    actionnumber = steer << 3 | throttle << 1 | brake #map the action combination into the a numerical value
+                    action.steer, action.throttle, action.brake = steer / 10.0, throttle * 0.5, brake * 1.0
+                    print('After processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
+                    action.steer, action.throttle, action.brake))
+                    actionprint={
+                        'action_number':actionnumber,
+                        'steer':action.steer,
+                        'throttle': action.throttle,
+                        'brake':action.brake
                     }
+                    action_list.append(actionprint)
 
                 self.cur_measurements, self.cur_image, reward, done, measurements = self.step(action)
-                action_list.append(action)
                 reward_list.append(reward)
                 measurements_list.append(self.cur_measurements)
 
-                # client.send_control(
-                #     steer=random.uniform(-1.0, 1.0),
-                #     throttle=0.5,
-                #     brake=0.0,
-                #     hand_brake=False,
-                #     reverse=False)
-
                 # calculate and save reward into memory
                 if self.pre_measurements:
-
                     #push demo memory
                     pass
 
@@ -203,6 +210,7 @@ class CarlaEnv:
                     filename = out_filename_format.format(episode, name, frame)
                     images.save_to_disk(filename)
 
+                #Todo: remember to do the same in the self exploring part
                 self.pre_measurements, self.pre_image = self.cur_measurements, self.cur_image
 
                 # check for end condition
@@ -213,7 +221,7 @@ class CarlaEnv:
             if not done:
                 print("Target not achieved!")
 
-            # save measurements and actions
+            # save measurements, actions and rewards
             measurement_df = pd.DataFrame(measurements_list)
             measurement_df.to_csv('_measurements%d.csv' % episode)
             action_df = pd.DataFrame(action_list)
