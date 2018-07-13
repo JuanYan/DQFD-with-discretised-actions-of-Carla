@@ -42,7 +42,7 @@ FINAL_EPSILON = 0.05  # final value of epsilon
 EPSILON_DECAY = 200
 
 Q_GAMMA = 0.99  # discount factor for Q
-EPISODE_NUM = 3000
+EPISODE_NUM = 1
 TRAJECTORY_NUM = 10  # n-step number for n-step TD-loss in both demo data and generated data
 
 # loss related
@@ -50,6 +50,6 @@ SU_LOSS_MARGIN = 1  # supervised loss margin
 SU_LOSS_LAMBDA = 1
 N_STEP_LOSS_LAMBDA = 1
 
-TARGET_UPDATE = 10
+TARGET_UPDATE = 100
 # --------------------- Files ----------------------------------------------------
 DEMO_PICKLE_FILE = "./new_demo.p"

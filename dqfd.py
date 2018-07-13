@@ -1,45 +1,49 @@
 #  -*- coding: utf-8 -*-
 
-
-import sys
-
-sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')  # add carla to python path
-import matplotlib
-import matplotlib.pyplot as plt
 import random
+import sys
 from collections import namedtuple
-
 import numpy as np
 import pandas as pd
 from PIL import Image
-from itertools import count
-from itertools import count
-
 import torch
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
+import config
+import utils
+
+# Carla
+# add carla to python path
+if sys.platform == "linux":
+    sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')
 
 from carla.client import make_carla_client
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
-from carla.tcp import TCPConnectionError
-from carla.util import print_over_same_line
+from CustomEnv import CarlaEnv
 
-device = torch.device('cuda')
-capacity = 5000
-demosize = 2000
-playsize = 3000
-target = np.array([158.08, 27.18])  # the target location point 134 on the map
-frame_max = 1000  # if the agent hasnot arrived at the target within the given frames/time, demonstration fails.
-batchsize = 128
-Transition = namedtuple('Transition', 'meas_old, images_old, control, reward, meas_new, images_new')
+# ----------------------------Parameters --------------------------------
+CAPACITY = 4000
+DEMO_SIZE = 1000
+PLAY_SIZE = 3000
+TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
+FRAME_MAX = 30  # if the agent has not arrived at the target within the given frames/time, demonstration fails.
+BATCH_SIZE = 15
 
 
-# The enviroment provides s, a, r(s), and transition s'
-# a=[0,1] referring to moving left and right. s is represented by the current screen pixes substracting the previous screen pixes.
+# ------------------------------Carla ------------------------------------
+
+# The environment provides s, a, r(s), and transition s'
+# a=[0,1] referring to moving left and right. s is represented by the current screen pixes subtracting the previous screen pixes.
 
 def carla_init(client):
+    """
+
+    :param client:
+    :return:
+    """
     settings = CarlaSettings()
     settings.set(
         SynchronousMode=True,
@@ -48,8 +52,8 @@ def carla_init(client):
         NumberOfPedestrians=40,
         WeatherId=random.choice([1, 3, 7, 8, 14]),
         QualityLevel='Epic')
-    # settings.randomize_seeds()
 
+    # CAMERA
     camera0 = Camera('CameraRGB')
     # Set image resolution in pixels.
     camera0.set_image_size(800, 600)
@@ -63,6 +67,7 @@ def carla_init(client):
     camera1.set_position(0.30, 0, 1.30)
     settings.add_sensor(camera1)
 
+    # LIDAR
     lidar = Lidar('Lidar32')
     lidar.set_position(0, 0, 2.50)
     lidar.set_rotation(0, 0, 0)
@@ -84,6 +89,11 @@ def carla_init(client):
 
 
 def carla_meas_pro(measurements):
+    """
+
+    :param measurements:
+    :return:
+    """
     pos_x = measurements.player_measurements.transform.location.x
     pos_y = measurements.player_measurements.transform.location.y
     speed = measurements.player_measurements.forward_speed * 3.6  # m/s -> km/h
@@ -113,7 +123,7 @@ def carla_meas_pro(measurements):
     print(message)
 
     pose = np.array([pos_x, pos_y])
-    dis = np.linalg.norm(pose - target)
+    dis = np.linalg.norm(pose - TARGET)
 
     if dis < 1:
         done = 1  # final state arrived!
@@ -125,24 +135,50 @@ def carla_meas_pro(measurements):
     return meas, done
 
 
-# DQfD_CartPole carla and record the measurements, the images, and the control signals
+def cal_reward(meas_old, meas_new):
+    """
+
+    :param meas_old:
+    :param meas_new:
+    :return:
+    """
+
+    def delta(key):
+        return meas_old[key] - meas_new[key]
+
+    return 1000 * delta('dis') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+           - 2 * delta('offroad') - 2 * delta('other_lane')
+
+
 def carla_demo(client):
+    """
+    DQfD_CartPole carla and record the measurements, the images, and the control signals
+    :param client:
+    :return:
+    """
+    global memory
+
     episode_num = 1
 
+    # file name format to save images
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
 
     for episode in range(0, episode_num):
+        # re-init client for each episode
         carla_init(client)
-        # meas_old, images_old, done = carla_observe(client)
+        # save all the measurement from frames
         measurement_list = []
         meas_old = None
-        images_old = None
+        state_old = None
 
-        for frame in range(0, frame_max):
+        for frame in range(0, FRAME_MAX):
             print('Running at Frame ', frame)
 
-            measurements, sensor_data = client.read_data()
+            # read new measurement
+            measurements, images_new = client.read_data()
+            state_new = images_new['CameraRGB']  # use the depth image only at experiment peoriod
 
+            # cal control signal
             control = measurements.player_measurements.autopilot_control
             control.steer += random.uniform(-0.1, 0.1)
             client.send_control(control)
@@ -153,27 +189,30 @@ def carla_demo(client):
             #     hand_brake=False,
             #     reverse=False)
 
+            # cal measurement
             meas_new, done = carla_meas_pro(measurements)
-            images_new = sensor_data
-            measurement_list.append(meas_new)
 
+            # calculate and save reward into memory
             if meas_old:
+                reward = cal_reward(meas_old, meas_new)
+                memory.demopush(meas_old, state_old, control, reward, meas_new, state_new)
 
-                reward = 1000*(meas_old['dis']-meas_new['dis'])+0.05*(meas_old['speed']-meas_new['speed'])-0.00002*(meas_old['col_damage']-meas_new['col_damage']) \
-                         -2*(meas_old['offroad']-meas_new['offroad'])-2*(meas_old['other_lane']-meas_new['other_lane'])
-
-                memory.demopush(meas_old, images_old, control, reward, meas_new, images_new)
-
-            for name, images in sensor_data.items():
+            # save image to disk
+            for name, images in images_new.items():
                 filename = out_filename_format.format(episode, name, frame)
                 images.save_to_disk(filename)
 
-            meas_old = meas_new
-            images_old = images_new
+            # save measurement
+            measurement_list.append(meas_new)
+            meas_old, state_old = meas_new, state_new
 
+            # check for end condition
             if done:
                 print('Target achieved!')
                 break
+
+        if not done:
+            print("Target not achieved!")
 
         measurement_df = pd.DataFrame(measurement_list)
         measurement_df.to_csv('_measurements%d.csv' % episode)
@@ -199,14 +238,7 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-policy_net = DQN().to(device)
-target_net = DQN().to(device)
-target_net.load_state_dict(policy_net.state_dict())
-target_net.eval()
-
-
 # the replay memory
-
 class ExperienceReplay(object):
 
     def __init__(self, capacity, demosize, playsize):
@@ -215,45 +247,80 @@ class ExperienceReplay(object):
         self.playsize = playsize
         self.playmemory = []
         self.demomemory = []
+        self.position = 0
 
     def demopush(self, *args):
-        if len(self.demomemory) < demosize:
+        if len(self.demomemory) < DEMO_SIZE:
             self.demomemory.append(Transition(*args))
         else:
             return
 
-    def playpush(self):
-        pass
+    def playpush(self, *args):
+        if len(self.playmemory) < self.playsize:
+            self.playmemory.append(None)
+            # leave an empty space
+        self.memory[self.position] = Transition(*args)
+        self.position = (self.position + 1) % self.playsize
 
     def replaySample(self, batchsize):
-        return random.sample(self.memory, batch_size)
+        return random.sample(self.playmemory + self.demomemory, batchsize)
+
+    def demoSample(self, batchsize):
+        return random.sample(self.demomemory, batchsize)
 
 
-def loss():
+def select_action(state):  # state = images.rgb
+    global steps_done
+    sample = random.random()
+    eps_threshold = 0.5
+    steps_done += 1
+    if sample > eps_threshold:
+        with torch.no_grad():
+            return policy_net(state).max(1)[1].view(1, 1)  # return the throttle/the steer command
+    else:
+        return torch.tensor([[random.randrange(2)]], device=device, dtype=torch.long)
+
+
+def loss(self):
     pass
 
 
-def optimize_model(loss):
-    pass
-
-
-def select_action():
-    pass
-
+Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
 
 # Initialisation
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+policy_net = DQN().to(device)
+target_net = DQN().to(device)
+target_net.load_state_dict(policy_net.state_dict())
+target_net.eval()
 
-memory = ExperienceReplay(capacity, demosize, playsize)
+memory = ExperienceReplay(CAPACITY, DEMO_SIZE, PLAY_SIZE)
+n_pretrain = 200
 
-with make_carla_client('localhost', 2000) as client:
-    print('CarlaClient connected')
+# Transition = namedtuple('Transition', 'meas_old, state_old, control, reward, meas_new, state_new')
+resize_image = T.Compose([T.ToPILImage(),
+                          T.Resize(600, interpolation=Image.CUBIC),
+                          T.ToTensor()])
 
-    # pre-trainning with only demonstration transitions
-    pretrain_iteration = 100
-    update_frequency = 20
-
+with make_carla_client(config.CARLA_HOST_ADDRESS, 2000) as client:
+    print('Carla Client connected')
     carla_demo(client)
 
-    # trainning with prioritized memory
-    for t in range(pretrain_iteration):
-        pass
+#
+# exp = CarlaEnv(TARGET)
+# exp.carla_demo()
+
+    # pre-trainning with only demonstration transitions
+    # pretrain_iteration = 100
+    # update_frequency = 20
+
+
+
+
+    # ----------------------------pretrain --------------------------------
+
+
+
+    # # trainning with prioritized memory
+    # for t in range(pretrain_iteration):[]
+    #     pass

@@ -62,10 +62,6 @@ class Agent:
         self.replay_memory = Memory(capacity=replay_buffer_size, permanent_size=len(demo_transitions))
         # demo_memory only store demo data
         self.demo_memory = Memory(capacity=demo_buffer_size, permanent_size=demo_buffer_size)
-        # add demo data to both demo_memory & replay_memory
-        # self.replay_memory_push(demo_transitions)
-        # self.demo_memory_push(demo_transitions)
-
         self.epsilon = config.INITIAL_EPSILON
         self.steps_done = 0
         #
@@ -101,7 +97,7 @@ class Agent:
         self.epsilon = config.FINAL_EPSILON + (config.INITIAL_EPSILON - config.FINAL_EPSILON) * \
                        np.exp(-1. * self.steps_done / config.EPSILON_DECAY)
         self.steps_done += 1
-        if random.random() <= self.epsilon:
+        if random.random() <= self.epsilon or state == None:
             return random.randint(0, config.ACTION_DIM - 1)
         else:
             if isinstance(state, np.ndarray):
@@ -115,18 +111,22 @@ class Agent:
         """
         k = config.PRE_TRAIN_STEP_NUM
         print("Pre training for %d steps." % k)
-        for i in tqdm(range(k)):
+        # for i in tqdm(range(k)):
+        for i in range(k):
             self.train(pre_train=True)
+            # print("steps: %d, parameters%.5f"%(i,self.policy_net.parameters()[0:5]))
+            if i % config.TARGET_UPDATE == 0:
+                self.update_target_net()
+                print('Target network updated!')
         print("Pre training done for %d steps." % k)
 
-    def train(self, pre_train=True):
+    def train(self, pre_train=False):
         """
         train Q network
         :param pre_train: if used for pre train or not
         :return:
         """
-        if not pre_train and not self.replay_memory.is_full:
-            return  # for normal training, sample only after replay mem is full
+
         # choose which memory to use
         mem = self.demo_memory if pre_train else self.replay_memory
         #  sample
@@ -172,7 +172,11 @@ class Agent:
         # optimization step and logging
         self.optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 100)
+        # torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), 100)
+        # self.optimizer.step()
+
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
         with torch.no_grad():

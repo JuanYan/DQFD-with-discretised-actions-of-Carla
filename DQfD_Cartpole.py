@@ -7,7 +7,6 @@ import torch
 import gym
 import config
 from DQfD_model import Agent, Transition
-from CustomEnv import GymEnv
 
 
 def load_demo(demo_file):
