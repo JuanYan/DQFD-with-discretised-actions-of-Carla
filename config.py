@@ -26,9 +26,9 @@ TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
 
 # ----------------------------- DQfD ----------------------------------------------
-PRE_TRAIN_STEP_NUM = 500  # DQfD pre-training step number
+PRE_TRAIN_STEP_NUM = 50 # DQfD pre-training step number
 
-EXPERIENCE_REPLAY_BUFFER_SIZE = 1000  # experience replay buffer size
+EXPERIENCE_REPLAY_FRAME = 1000  # experience replay buffer size
 DEMO_BUFFER_SIZE = 39    #500*50
 REPLAY_BUFFER_SIZE = DEMO_BUFFER_SIZE * 2
 
@@ -50,6 +50,6 @@ SU_LOSS_MARGIN = 1  # supervised loss margin
 SU_LOSS_LAMBDA = 1
 N_STEP_LOSS_LAMBDA = 1
 
-TARGET_UPDATE = 100
+TARGET_UPDATE = 10  #100
 # --------------------- Files ----------------------------------------------------
 DEMO_PICKLE_FILE = "./new_demo.p"
