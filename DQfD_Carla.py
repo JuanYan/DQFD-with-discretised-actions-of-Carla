@@ -11,13 +11,14 @@ import pandas as pd
 from DQfD_model import Agent, Transition
 from memory import Memory, SumTree
 from utils import rgb_image_to_tensor
+from CustomEnv import CarlaEnv
 
 # Carla
 # add carla to python path
 if sys.platform == "linux":
     sys.path.append('/home/jy18/CARLA_0.8.3/PythonClient')
 
-from CustomEnv import CarlaEnv
+
 
 
 def carla_demo(exp):
@@ -97,65 +98,6 @@ def carla_demo(exp):
 
     return demomem, demo_transitions
 
-# #
-# def dqfd_eval():
-#     # create Carla env
-#
-#     # load demo transitions
-#     demo_transitions = load_demo(config.DEMO_PICKLE_FILE)
-#
-#     # use the demo data to pre-train network
-#     agent = Agent(demo_transitions = demo_transitions)
-#     agent.pre_train()
-#
-#     # training loop
-#     episode, replay_full_episode = 0, None
-#     for i_episode in range(config.EPISODE_NUM):
-#         done, n_reward, state = False, None, env.reset()
-#         transitions = []
-#         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
-#         for step in itertools.count(10):
-#             action = agent.e_greedy_select_action(state)
-#             next_state, reward, done, info = env.step(action)
-#             reward = torch.Tensor([reward])
-#
-#             # storing transition in a temporary replay buffer in order to calculate n-step returns
-#             transitions.insert(0, Transition(state, action, next_state, reward, torch.zeros(1)))
-#             state = next_state
-#             gamma = 1
-#             new_trans = []
-#             for trans in transitions:
-#                 new_trans.append(trans._replace(n_reward=trans.n_reward + gamma * reward))
-#                 gamma = gamma * config.Q_GAMMA
-#             transitions = new_trans
-#
-#             # if the episode isn't over, get the next q val and add the 10th transition to the replay buffer
-#             # otherwise push all transitions to the buffer
-#             if not done:
-#                 q_val = agent.policy_net(torch.from_numpy(next_state)).data
-#                 if len(transitions) >= 10:
-#                     last_trans = transitions.pop()
-#                     last_trans = last_trans._replace(n_reward=last_trans.n_reward + gamma * q_val.max(1)[0].cpu())
-#                     agent.replay_memory.push(last_trans)
-#                 state = next_state
-#
-#             else:
-#                 for trans in transitions:
-#                     agent.replay_memory.push(trans)
-#
-#             if agent.replay_memory.is_full:
-#                 # TODO: check again
-#                 agent.train()
-#
-#             if done:
-#                 print("episode: %d, memory length: %d  epsilon: %f" % (i_episode, len(agent.replay_memory), agent.epsilon))
-#                 break
-#
-#         # Update the target network
-#         if i_episode % 100 == 0:
-#             agent.update_target_net()
-#     env.close()
-
 
 if __name__ == "__main__":
     # dqfd_eval()
@@ -167,22 +109,40 @@ if __name__ == "__main__":
     agent.demo_memory_push(demo_transitions)
     agent.pre_train()
 
+    for i_episode in range(config.EPISODE_NUM):
+        exp.reset()
+        pre_state=None
+        new_state=None
+        transitions = []
+
+        # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
+        for steps in itertools.count(1000):
+
+            action_no = agent.e_greedy_select_action(new_state)
+            new_meas, new_state, reward, done, _ = exp.step(action_no)
 
 
+            if not pre_state:
+                transition = Transition(rgb_image_to_tensor(pre_state['CameraRGB']),
+                                    torch.tensor([[action_no]]), torch.tensor([[reward]]),
+                                    rgb_image_to_tensor(new_state['CameraRGB']),
+                                    torch.zeros(1))  # TODO: use both the measurement and the image later
+                agent.replay_memory_push(transition)
 
+            pre_state = new_state
 
+            if agent.replay_memory.is_full:
+                # TODO: check again
+                agent.train()
 
-    # pre-trainning with only demonstration transitions
-    # pretrain_iteration = 100
-    # update_frequency = 20
+            if done:
+                print("episode: %d, memory length: %d  epsilon: %f" % (i_episode, len(agent.replay_memory), agent.epsilon))
+                break
 
+        if steps % 100 == 0:
+            agent.update_target_net()
 
+        # Update the target network
 
+    exp.close()
 
-    # ----------------------------pretrain --------------------------------
-
-
-
-    # # trainning with prioritized memory
-    # for t in range(pretrain_iteration):[]
-    #     pass
