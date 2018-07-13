@@ -65,8 +65,8 @@ class Agent:
         self.epsilon = config.INITIAL_EPSILON
         self.steps_done = 0
         #
-        self.target_net = DQN().to(device)
-        self.policy_net = DQN().to(device)
+        self.target_net = DQN().to(device, dtype=torch.double)
+        self.policy_net = DQN().to(device,dtype=torch.double)
 
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=config.LEARNING_RATE)
 
@@ -97,7 +97,7 @@ class Agent:
         self.epsilon = config.FINAL_EPSILON + (config.INITIAL_EPSILON - config.FINAL_EPSILON) * \
                        np.exp(-1. * self.steps_done / config.EPSILON_DECAY)
         self.steps_done += 1
-        if random.random() <= self.epsilon or state == None:
+        if random.random() <= self.epsilon or state is None:
             return random.randint(0, config.ACTION_DIM - 1)
         else:
             if isinstance(state, np.ndarray):

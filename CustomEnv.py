@@ -8,13 +8,13 @@ from carla.client import CarlaClient
 from carla.sensor import Camera, Lidar
 from carla.settings import CarlaSettings
 import config
-
+import utils
 
 
 class CarlaEnv:
     def __init__(self, target):
         self.carla_client = CarlaClient(
-            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT)
+            config.CARLA_HOST_ADDRESS, config.CARLA_HOST_PORT, timeout=100)
         self.carla_client.connect()
         self.target = target
         self.pre_image = None
@@ -24,15 +24,22 @@ class CarlaEnv:
 
     def step(self, action):
         """
-        :param action:
+        :param action: dict of control signals, such as {'steer':0, 'throttle':0.2}
         :return: next_state, reward, done, info
         """
-        self.carla_client.send_control(action)
+        if isinstance(action,dict):
+            self.carla_client.send_control(**action)
+            print(action)
+        else:
+            self.carla_client.send_control(action)
+
         measurements, self.cur_image = self.carla_client.read_data()
         self.cur_measurements = self.extract_measurements(measurements)
         # Todo: Checkup the reward function with the images
         reward, done = self.cal_reward()
-        return self.cur_measurements, self.cur_image, reward, done, measurements
+        cur_state = utils.rgb_image_to_tensor(self.cur_image['CameraRGB'])
+        cur_meas = self.cur_measurements
+        return cur_meas, cur_state, reward, done, measurements
 
     def reset(self):
         """
@@ -184,14 +191,20 @@ class CarlaEnv:
         :return:
         """
         gas = action_no & 0b11
+        throttle = 0.0
+        brake = 0.0
 
         if gas:
             throttle = (gas -1) * 0.5
         else:
             brake = abs(gas -1) * 1.0
-        steer = (((action_no & 0b11111000) >> 3) -10) / 10.0
 
-        return steer, throttle, brake
+        steer = (((action_no & 0b1111100) >> 2) -10) / 10.0
+
+        action = dict()
+        action['steer'], action['throttle'], action['brake'] = steer, throttle, brake
+
+        return action
 
 
     def close(self):

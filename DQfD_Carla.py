@@ -13,6 +13,7 @@ from memory import Memory, SumTree
 from utils import rgb_image_to_tensor
 from CustomEnv import CarlaEnv
 
+
 # Carla
 # add carla to python path
 if sys.platform == "linux":
@@ -40,11 +41,13 @@ def carla_demo(exp):
         measurements_list = []
         action_list = []
         reward_list = []
+        meas = None
+        state= None
 
         for frame in range(0, config.CARLA_DEMO_FRAME):
             print('Running at Frame ', frame)
 
-            if not exp.pre_measurements:
+            if not meas:
                 action = None
             else:
                 control = measurements.player_measurements.autopilot_control
@@ -57,20 +60,22 @@ def carla_demo(exp):
                 }
                 action_list.append(actionprint)
 
-            exp.cur_measurements, exp.cur_image, reward, done, measurements = exp.step(action)
+            next_meas, next_state, reward, done, measurements = exp.step(action)
             reward_list.append(reward)
-            measurements_list.append(exp.cur_measurements)
+            measurements_list.append(next_meas)
 
 
             # calculate and save reward into memory
             # Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'n_reward'))
 
-            if exp.pre_measurements:
-                # pre_state = [exp.pre_measurements, exp.pre_image]  #TODO: use both the measurement and the image later
-                # cur_state = [exp.cur_measurements, exp.cur_image]  #TODO: use both the measurement and the image later
-                transition = Transition(rgb_image_to_tensor(exp.pre_image['CameraRGB']), torch.tensor([[action_no]],dtype=torch.long), torch.tensor([[reward]]), rgb_image_to_tensor(exp.cur_image['CameraRGB']), torch.zeros(1))   #TODO: use both the measurement and the image later
+            if meas:
+
+                transition = Transition(state,
+                                        torch.tensor([[action_no]]),
+                                        torch.tensor([[reward]]),
+                                        next_state,
+                                        torch.zeros(1))   #TODO: use both the measurement and the image later
                 demo_transitions.append(transition)
-                demomem.push(transition)
 
             # save image to disk
             for name, images in exp.cur_image.items():
@@ -78,7 +83,7 @@ def carla_demo(exp):
                 images.save_to_disk(filename)
 
             # Todo: remember to do the same in the self exploring part
-            exp.pre_measurements, exp.pre_image = exp.cur_measurements, exp.cur_image
+            meas, state = next_meas, next_state
 
             # check for end condition
             if done:
@@ -96,14 +101,14 @@ def carla_demo(exp):
         reward_df = pd.DataFrame(reward_list)
         reward_df.to_csv('_reward%d.csv' % episode)
 
-    return demomem, demo_transitions
+    return  demo_transitions
 
 
 if __name__ == "__main__":
     # dqfd_eval()
 
     exp = CarlaEnv(config.TARGET)
-    demomem, demo_transitions = carla_demo(exp)
+    demo_transitions = carla_demo(exp)
     agent = Agent(demo_transitions)
     agent.replay_memory_push(demo_transitions)
     agent.demo_memory_push(demo_transitions)
@@ -111,25 +116,32 @@ if __name__ == "__main__":
 
     for i_episode in range(config.EPISODE_NUM):
         exp.reset()
-        pre_state=None
-        new_state=None
-        transitions = []
+        state = None
+        meas = None
+        next_state = None
+        next_meas = None
+
 
         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
-        for steps in itertools.count(1000):
+        for steps in itertools.count(config.EXPERIENCE_REPLAY_FRAME):
 
-            action_no = agent.e_greedy_select_action(new_state)
-            new_meas, new_state, reward, done, _ = exp.step(action_no)
+            print("Replay frame: %d , length of replaymemory %d" % (steps, len(agent.replay_memory)))
+            action_no = agent.e_greedy_select_action(state)
+            action = exp.reverse_action(action_no)
+            next_meas, next_state, reward, done, _ = exp.step(action)
 
 
-            if not pre_state:
-                transition = Transition(rgb_image_to_tensor(pre_state['CameraRGB']),
-                                    torch.tensor([[action_no]]), torch.tensor([[reward]]),
-                                    rgb_image_to_tensor(new_state['CameraRGB']),
-                                    torch.zeros(1))  # TODO: use both the measurement and the image later
-                agent.replay_memory_push(transition)
+            if meas:
+                transition = Transition(state,
+                                        torch.tensor([[action_no]]),
+                                        torch.tensor([[reward]]),
+                                        next_state,
+                                        torch.zeros(1))  # TODO: use both the measurement and the image later
+                agent.replay_memory_push([transition])
 
-            pre_state = new_state
+            state = next_state
+            meas = next_meas
+
 
             if agent.replay_memory.is_full:
                 # TODO: check again
