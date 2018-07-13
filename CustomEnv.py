@@ -139,8 +139,10 @@ class CarlaEnv:
             return self.pre_measurements[key] - self.cur_measurements[key]
 
         def reward_func():
-            return 1000 * delta('distance') + 0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+            return  0.05 * delta('speed') - 0.00002 * delta('col_damage') \
                    - 2 * delta('offroad') - 2 * delta('other_lane')
+
+        # 1000 * delta('distance') +  ignore the distance for auto-pilot
 
         # check distance to target
         done = self.cur_measurements['distance'] < 1  # final state arrived or not
@@ -155,14 +157,25 @@ class CarlaEnv:
         """
         print('Before processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
             action.steer, action.throttle, action.brake))
-        steer = int(10 * action.steer)
+        steer = int(10 * action.steer) + 10 #action.steer has 21 options from [-1, 1]
         throttle = int(action.throttle / 0.5)  # action.throttle= 0, 0.5 or 1.0
         brake = int(action.brake)  # action.brake=0 or 1.0
-        action_no = steer << 3 | throttle << 1 | brake  # map the action combination into the a numerical value
-        action.steer, action.throttle, action.brake = steer / 10.0, throttle * 0.5, brake * 1.0
+        if brake:
+            gas = -brake     # -1
+
+        else:
+            gas = throttle   # 0, 1, 2
+
+        gas += 1
+
+        action_no = steer << 2 | gas  # map the action combination into the a numerical value
+
+        #gas takes two digits, steer takes 5 digits
+        action.steer, action.throttle, action.brake = (steer - 10) / 10.0, throttle * 0.5, brake * 1.0
         print('After processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
             action.steer, action.throttle, action.brake))
-        return action_no,action
+        return action_no, action
+
 
     def reverse_action(self, action_no):
         """
@@ -170,7 +183,15 @@ class CarlaEnv:
         :param action_no:
         :return:
         """
-        pass
+        gas = action_no & 0b11
+
+        if gas:
+            throttle = (gas -1) * 0.5
+        else:
+            brake = abs(gas -1) * 1.0
+        steer = (((action_no & 0b11111000) >> 3) -10) / 10.0
+
+        return steer, throttle, brake
 
 
     def close(self):

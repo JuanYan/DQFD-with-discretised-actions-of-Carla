@@ -10,6 +10,7 @@ import config
 import pandas as pd
 from DQfD_model import Agent, Transition
 from memory import Memory, SumTree
+from utils import rgb_image_to_tensor
 
 # Carla
 # add carla to python path
@@ -26,6 +27,7 @@ def carla_demo(exp):
     :return:
     """
     demomem = Memory(config.DEMO_BUFFER_SIZE)
+    demo_transitions=[]
 
     # file name format to save images
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
@@ -63,9 +65,10 @@ def carla_demo(exp):
             # Transition = namedtuple('Transition', ('state', 'action', 'reward', 'next_state', 'n_reward'))
 
             if exp.pre_measurements:
-                pre_state = [exp.pre_measurements, exp.pre_image]
-                cur_state = [exp.cur_measurements, exp.cur_image]
-                transition = Transition(pre_state, action_no, cur_state, reward, torch.zeros(1))
+                # pre_state = [exp.pre_measurements, exp.pre_image]  #TODO: use both the measurement and the image later
+                # cur_state = [exp.cur_measurements, exp.cur_image]  #TODO: use both the measurement and the image later
+                transition = Transition(rgb_image_to_tensor(exp.pre_image['CameraRGB']), torch.tensor([[action_no]],dtype=torch.long), torch.tensor([[reward]]), rgb_image_to_tensor(exp.cur_image['CameraRGB']), torch.zeros(1))   #TODO: use both the measurement and the image later
+                demo_transitions.append(transition)
                 demomem.push(transition)
 
             # save image to disk
@@ -92,7 +95,7 @@ def carla_demo(exp):
         reward_df = pd.DataFrame(reward_list)
         reward_df.to_csv('_reward%d.csv' % episode)
 
-    return demomem
+    return demomem, demo_transitions
 
 # #
 # def dqfd_eval():
@@ -158,9 +161,11 @@ if __name__ == "__main__":
     # dqfd_eval()
 
     exp = CarlaEnv(config.TARGET)
-    demomem = carla_demo(exp)
-    # agent = Agent(demo_transitions = demo_transitions)
-    # agent.pre_train()
+    demomem, demo_transitions = carla_demo(exp)
+    agent = Agent(demo_transitions)
+    agent.replay_memory_push(demo_transitions)
+    agent.demo_memory_push(demo_transitions)
+    agent.pre_train()
 
 
 
