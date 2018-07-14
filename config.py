@@ -19,7 +19,7 @@ CARLA_IMG_WIDTH = 80
 
 #CARLA demo
 CARLA_DEMO_EPISODE = 1
-CARLA_DEMO_FRAME = 40
+CARLA_DEMO_FRAME = 1000
 
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
@@ -28,9 +28,10 @@ TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 # ----------------------------- DQfD ----------------------------------------------
 PRE_TRAIN_STEP_NUM = 50 # DQfD pre-training step number
 
-EXPERIENCE_REPLAY_FRAME = 1000  # experience replay buffer size
-DEMO_BUFFER_SIZE = 39    #500*50
+
+DEMO_BUFFER_SIZE = CARLA_DEMO_FRAME-1    #500*50
 REPLAY_BUFFER_SIZE = DEMO_BUFFER_SIZE * 2
+EXPERIENCE_REPLAY_FRAME = DEMO_BUFFER_SIZE*5  # experience replay buffer size
 
 BATCH_SIZE = 4  # size of mini batch
 ACTION_DIM = 21*4  # action/output dim of DQfD

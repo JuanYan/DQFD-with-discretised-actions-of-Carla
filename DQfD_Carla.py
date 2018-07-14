@@ -130,7 +130,6 @@ if __name__ == "__main__":
             action = exp.reverse_action(action_no)
             next_meas, next_state, reward, done, _ = exp.step(action)
 
-
             if meas:
                 transition = Transition(state,
                                         torch.tensor([[action_no]]),

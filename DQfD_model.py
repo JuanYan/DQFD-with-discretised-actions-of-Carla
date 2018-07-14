@@ -101,8 +101,8 @@ class Agent:
             return random.randint(0, config.ACTION_DIM - 1)
         else:
             if isinstance(state, np.ndarray):
-                state = torch.from_numpy(state).to(device)
-            return self.policy_net(state).max(0)[1].view(1, 1).item()  # TODO:
+                state = torch.from_numpy(state).to(device, dtype=torch.double)
+            return self.policy_net(state.to(device, dtype=torch.double)).max(1)[1].view(1, 1).item()  # TODO:
 
     def pre_train(self):
         """
@@ -154,6 +154,7 @@ class Agent:
         # calculating the q loss and n-step return loss
         q_loss = F.mse_loss(state_action_values, expected_state_action_values.unsqueeze(1), size_average=False)
         n_step_loss = F.mse_loss(state_action_values, n_reward_batch.unsqueeze(1), size_average=False)
+        n_step_loss = 0
 
 
         # calculating the supervised loss
