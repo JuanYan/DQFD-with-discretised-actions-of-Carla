@@ -146,7 +146,7 @@ class CarlaEnv:
             return self.pre_measurements[key] - self.cur_measurements[key]
 
         def reward_func():
-            return  0.05 * delta('speed') - 0.00002 * delta('col_damage') \
+            return  0.05 * delta('speed') - 0.002 * delta('col_damage') \
                    - 2 * delta('offroad') - 2 * delta('other_lane')
 
         # 1000 * delta('distance') +  ignore the distance for auto-pilot
