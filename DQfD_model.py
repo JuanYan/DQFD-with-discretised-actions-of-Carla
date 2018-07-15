@@ -42,7 +42,7 @@ class DQN(nn.Module):
         self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
         self.bn3 = nn.BatchNorm2d(32)
-        self.head = nn.Linear(28*32, 4*21)  # there is 84 output options for the action space
+        self.head = nn.Linear(28*32, 4*201)  # there is 84 output options for the action space
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
@@ -114,7 +114,7 @@ class Agent:
         # for i in tqdm(range(k)):
         for i in range(k):
             self.train(pre_train=True)
-            # print("steps: %d, parameters%.5f"%(i,self.policy_net.parameters()[0:5]))
+            print('steps: %d' % i)
             if i % config.TARGET_UPDATE == 0:
                 self.update_target_net()
                 print('Target network updated!')

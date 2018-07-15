@@ -37,9 +37,9 @@ class CarlaEnv:
         self.cur_measurements = self.extract_measurements(measurements)
         # Todo: Checkup the reward function with the images
         reward, done = self.cal_reward()
-        cur_state = utils.rgb_image_to_tensor(self.cur_image['CameraRGB'])
-        cur_meas = self.cur_measurements
-        return cur_meas, cur_state, reward, done, measurements
+        self.pre_measurements = self.cur_measurements
+        self.pre_image = self.cur_image
+        return self.cur_measurements, self.cur_image , reward, done, measurements
 
     def reset(self):
         """
@@ -56,7 +56,7 @@ class CarlaEnv:
             QualityLevel='Epic')
 
         # CAMERA
-        camera0 = Camera('CameraRGB')
+        camera0 = Camera('CameraRGB', PostProcessing='SceneFinal')
         # Set image resolution in pixels.
         camera0.set_image_size(800, 600)
         # Set its position relative to the car in meters.
@@ -111,7 +111,11 @@ class CarlaEnv:
         col_ped = p_meas.collision_pedestrians
         col_other = p_meas.collision_other
         other_lane = 100 * p_meas.intersection_otherlane
+        if other_lane:
+            print('Intersection into other lane %.2f' % other_lane)
         offroad = 100 * p_meas.intersection_offroad
+        if offroad:
+            print('offroad %.2f' % offroad)
         agents_num = len(measurements.non_player_agents)
         distance = np.linalg.norm(np.array([pos_x, pos_y]) - self.target)
         meas = {
@@ -129,7 +133,7 @@ class CarlaEnv:
         message += 'Collision: vehicles=%.0f, pedestrians=%.0f, other=%.0f, ' % (col_cars, col_ped, col_other,)
         message += '%.0f%% other lane, %.0f%% off-road, ' % (other_lane, offroad,)
         message += '%d non-player agents in the scene.' % (agents_num,)
-        print(message)
+        # print(message)
 
         return meas
 
@@ -138,33 +142,35 @@ class CarlaEnv:
         :param
         :return: reward, done
         """
+        def delta(key):
+            return self.cur_measurements[key] - self.pre_measurements[key]
 
         if self.pre_measurements is None:
-            return 0.0, False
-
-        def delta(key):
-            return self.pre_measurements[key] - self.cur_measurements[key]
-
-        def reward_func():
-            return  0.05 * delta('speed') - 0.002 * delta('col_damage') \
+            reward = 0.0
+        else:
+            reward = 0.05 * delta('speed') - 0.002 * delta('col_damage') \
                    - 2 * delta('offroad') - 2 * delta('other_lane')
+            # print('delta speed %.3f' % delta('speed') )
+            print('[pre_offroad, current_offroad] =[%.2f, %.2f], reward: %.2f' % (self.pre_measurements['offroad'], self.cur_measurements['offroad'], reward))
+
 
         # 1000 * delta('distance') +  ignore the distance for auto-pilot
 
         # check distance to target
         done = self.cur_measurements['distance'] < 1  # final state arrived or not
 
-        return reward_func(), done
+        return reward, done
 
-    def action_discretize(self,action):
+    def action_discretize(self,control):
         """
         discrete the control action
         :param action:
         :return:
         """
-        print('Before processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
-            action.steer, action.throttle, action.brake))
-        steer = int(10 * action.steer) + 10 #action.steer has 21 options from [-1, 1]
+        # print('Before processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
+        #     action.steer, action.throttle, action.brake))
+        action = control
+        steer = int(100 * action.steer) + 100 #action.steer has 21 options from [-1, 1]
         throttle = int(action.throttle / 0.5)  # action.throttle= 0, 0.5 or 1.0
         brake = int(action.brake)  # action.brake=0 or 1.0
         if brake:
@@ -178,9 +184,9 @@ class CarlaEnv:
         action_no = steer << 2 | gas  # map the action combination into the a numerical value
 
         #gas takes two digits, steer takes 5 digits
-        action.steer, action.throttle, action.brake = (steer - 10) / 10.0, throttle * 0.5, brake * 1.0
-        print('After processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
-            action.steer, action.throttle, action.brake))
+        action.steer, action.throttle, action.brake = (steer - 100) / 100.0, throttle * 0.5, brake * 1.0
+        # print('After processing, steer=%.5f,throttle=%.2f,brake=%.2f' % (
+        #     action.steer, action.throttle, action.brake))
         return action_no, action
 
 
@@ -199,7 +205,7 @@ class CarlaEnv:
         else:
             brake = abs(gas -1) * 1.0
 
-        steer = (((action_no & 0b1111100) >> 2) -10) / 10.0
+        steer = (((action_no & 0b1111111100) >> 2) -100) / 100.0
 
         action = dict()
         action['steer'], action['throttle'], action['brake'] = steer, throttle, brake

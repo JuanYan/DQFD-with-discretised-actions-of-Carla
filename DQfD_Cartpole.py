@@ -28,7 +28,7 @@ def dqfd_eval():
     # create gym env
     env = gym.make("CartPole-v1")
     # load demo transitions
-    demo_transitions = load_demo(config.DEMO_PICKLE_FILE)
+    demo_transitions = load_demo(config.CARTPOLE_DEMO_FILE)
 
     # use the demo data to pre-train network
     agent = Agent(demo_transitions=demo_transitions)
