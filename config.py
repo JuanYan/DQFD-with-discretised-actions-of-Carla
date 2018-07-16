@@ -11,15 +11,15 @@ USE_CUDA = False # to use GPU or not, False will disable using GPU even if avail
 # CARLA_HOST_ADDRESS = "192.168.1.98" # Carla host address
 # Carla on local machine, use 'localhost'
 CARLA_HOST_ADDRESS = "localhost"
-CARLA_HOST_PORT = 2000 # Port number
+CARLA_HOST_PORT = 2000# Port number
 
 # CARLA image shape after resize
 CARLA_IMG_HEIGHT = 60
 CARLA_IMG_WIDTH = 80
 
 #CARLA demo
-CARLA_DEMO_EPISODE = 1
-CARLA_DEMO_FRAME = 2500
+CARLA_DEMO_EPISODE = 5
+CARLA_DEMO_FRAME = 1000
 
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
@@ -32,7 +32,7 @@ PRE_TRAIN_STEP_NUM = 2000 # DQfD pre-training step number
 
 
 #------memory setting--------
-DEMO_BUFFER_SIZE = CARLA_DEMO_FRAME-1    #500*50
+DEMO_BUFFER_SIZE = (CARLA_DEMO_FRAME-1) * CARLA_DEMO_EPISODE    #500*50
 REPLAY_BUFFER_SIZE = DEMO_BUFFER_SIZE * 2
 EXPERIENCE_REPLAY_FRAME = DEMO_BUFFER_SIZE*5  # experience replay buffer size
 
@@ -58,3 +58,4 @@ TARGET_UPDATE = 100  #100
 # --------------------- Files ----------------------------------------------------
 CARTPOLE_DEMO_FILE = "./Cartpole_demo.p"
 CARLA_DEMO_FILE = "./Carla_demo.p"
+CARLA_PRETRAIN_FILE = "./Carla_pretrain.p"

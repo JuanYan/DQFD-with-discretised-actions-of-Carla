@@ -1,51 +1,30 @@
 #  -*- coding: utf-8 -*-
 
 
-import sys
 import itertools
 import torch
 import config
 import pandas as pd
 from DQfD_model import Agent, Transition
-from memory import Memory
 from CustomEnv import CarlaEnv
 import utils
 import pickle
 import collections
-
+import numpy as np
 
 
 
 # Carla
 # add carla to python path
 
-
-def load_demo(demo_file):
-    """
-    load demo transitions from file
-    :param demo_file:
-    :return:
-    """
-    with open(demo_file, 'rb') as f:
-        # load demo transitions from pickle
-        demos = pickle.load(f)
-        # use only the first DEMO_BUFFER_SIZE transitions as demo
-        demos = collections.deque(itertools.islice(demos, 0, config.DEMO_BUFFER_SIZE))
-        assert len(demos) == config.DEMO_BUFFER_SIZE
-        return demos
-
-
-
 if __name__ == "__main__":
     # dqfd_eval()
 
     exp = CarlaEnv(config.TARGET)
     exp.reset()
-    demo_transitions = load_demo(config.CARLA_DEMO_FILE)
-    agent = Agent(demo_transitions)
-    agent.replay_memory_push(demo_transitions)
-    agent.demo_memory_push(demo_transitions)
-    agent.pre_train()
+    # demo_transitions = load_demo(config.CARLA_DEMO_FILE)
+    with open(config.CARLA_PRETRAIN_FILE, 'rb') as f:
+        agent = pickle.load(f)
 
     for i_episode in range(config.EPISODE_NUM):
         exp.reset()
@@ -53,17 +32,29 @@ if __name__ == "__main__":
         meas = None
         next_state = None
         next_meas = None
-
+        offroad_list = []
+        otherlane_list=[]
 
         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
-        for steps in itertools.count(config.EXPERIENCE_REPLAY_FRAME):
+        for steps in itertools.count(config.DEMO_BUFFER_SIZE):
 
             print("Replay frame: %d , length of replaymemory %d" % (steps, len(agent.replay_memory)))
             action_no = agent.e_greedy_select_action(state)
             action = exp.reverse_action(action_no)
             next_meas, next_state, reward, done, _ = exp.step(action)
             next_state = utils.rgb_image_to_tensor(next_state['CameraRGB'])
+            offroad_list.append(next_meas['offroad'])
+            otherlane_list.append(next_meas['other_lane'])
 
+            # reset the enviroment if the car stay offroad or other_lane for 5 consequent steps
+            if len(offroad_list) > 10:
+                ar = np.array(offroad_list[-5:]).astype('int64')
+                tag1 = np.bitwise_and.reduce(ar)
+                br= np.array(otherlane_list[-10:]).astype('int64')
+                tag2 = np.bitwise_and.reduce(br)
+                tag = tag1 | tag2
+                if tag:
+                    exp.reset()
 
             if meas:
                 transition = Transition(state,
@@ -80,13 +71,14 @@ if __name__ == "__main__":
             if agent.replay_memory.is_full:
                 # TODO: check again
                 agent.train()
+            #
+            # if done:
+            #     print("episode: %d, memory length: %d  epsilon: %f" % (i_episode, len(agent.replay_memory), agent.epsilon))
+            #     break
+            if steps % 100 == 0:
+                agent.update_target_net()
 
-            if done:
-                print("episode: %d, memory length: %d  epsilon: %f" % (i_episode, len(agent.replay_memory), agent.epsilon))
-                break
 
-        if steps % 100 == 0:
-            agent.update_target_net()
 
         # Update the target network
 

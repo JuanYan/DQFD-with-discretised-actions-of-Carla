@@ -88,8 +88,10 @@ class CarlaEnv:
         self.pre_measurements = None
         self.cur_measurements = None
 
-        # define the starting point of the agent
-        player_start = 140
+        # define a random starting point of the agent for the appropriate trainning
+        number_of_player_starts = len(scene.player_start_spots)
+        player_start = random.randint(0, max(0, number_of_player_starts - 1))
+        # player_start = 140
         self.carla_client.start_episode(player_start)
         print('Starting new episode at %r, %d...' %
               (scene.map_name, player_start))
@@ -151,8 +153,7 @@ class CarlaEnv:
             reward = 0.05 * delta('speed') - 0.002 * delta('col_damage') \
                    - 2 * delta('offroad') - 2 * delta('other_lane')
             # print('delta speed %.3f' % delta('speed') )
-            print('[pre_offroad, current_offroad] =[%.2f, %.2f], reward: %.2f' % (self.pre_measurements['offroad'], self.cur_measurements['offroad'], reward))
-
+            # print('[pre_offroad, current_offroad] =[%.2f, %.2f], reward: %.2f' % (self.pre_measurements['offroad'], self.cur_measurements['offroad'], reward))
 
         # 1000 * delta('distance') +  ignore the distance for auto-pilot
 
