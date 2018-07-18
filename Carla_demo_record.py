@@ -33,7 +33,7 @@ def carla_demo(exp):
         state= None
 
         for frame in range(0, config.CARLA_DEMO_FRAME):
-            print('Running at Frame ', frame)
+            print('Running at episode %d Frame %d' % (episode, frame))
 
             if not meas:
                 action = None
@@ -64,10 +64,12 @@ def carla_demo(exp):
 
             if meas:
 
-                transition = Transition(state,
+                transition = Transition(meas,
+                                        state,
                                         torch.tensor([[action_no]]),
                                         torch.tensor([[reward]]),
                                         next_state,
+                                        next_meas,
                                         torch.zeros(1))   #TODO: use both the measurement and the image later
                 demo_transitions.append(transition)
 
