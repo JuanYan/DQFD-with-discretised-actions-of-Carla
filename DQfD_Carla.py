@@ -13,19 +13,7 @@ import collections
 import numpy as np
 
 
-
-# Carla
-# add carla to python path
-
-if __name__ == "__main__":
-    # dqfd_eval()
-
-    exp = CarlaEnv(config.TARGET)
-    exp.reset()
-    # demo_transitions = load_demo(config.CARLA_DEMO_FILE)
-    with open(config.CARLA_PRETRAIN_FILE, 'rb') as f:
-        agent = pickle.load(f)
-
+def dqfd_replay(exp, agent):
     for i_episode in range(config.EPISODE_NUM):
         exp.reset()
         state = None
@@ -57,10 +45,12 @@ if __name__ == "__main__":
                     exp.reset()
 
             if meas:
-                transition = Transition(state,
+                transition = Transition(meas,
+                                        state,
                                         torch.tensor([[action_no]]),
                                         torch.tensor([[reward]]),
                                         next_state,
+                                        next_meas,
                                         torch.zeros(1))  # TODO: use both the measurement and the image later
                 agent.replay_memory_push([transition])
 
@@ -69,7 +59,6 @@ if __name__ == "__main__":
 
 
             if agent.replay_memory.is_full:
-                # TODO: check again
                 agent.train()
             #
             # if done:
@@ -80,7 +69,23 @@ if __name__ == "__main__":
 
 
 
-        # Update the target network
+
+# Carla
+# add carla to python path
+
+if __name__ == "__main__":
+    #
+
+    exp = CarlaEnv(config.TARGET)
+    exp.reset()
+    # demo_transitions = load_demo(config.CARLA_DEMO_FILE)
+    with open(config.CARLA_PRETRAIN_FILE, 'rb') as f:
+        print("loading pretrain parameters...")
+        agent = pickle.load(f)
+        num_prameters = sum(p.numel() for p in agent.policy_net.parameters() if p.requires_grad)
+    print(num_prameters, "Prameter loaded!")
+    dqfd_replay(agent)
+
 
     exp.close()
 

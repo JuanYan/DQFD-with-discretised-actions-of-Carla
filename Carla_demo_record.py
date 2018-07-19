@@ -82,12 +82,12 @@ def carla_demo(exp):
             meas, state = next_meas, next_state
 
             # check for end condition
-            if done:
-                print('Target achieved!')
-                break
-
-        if not done:
-            print("Target not achieved!")
+        #     if done:
+        #         print('Target achieved!')
+        #         break
+        #
+        # if not done:
+        #     print("Target not achieved!")
 
         # save measurements, actions and rewards
         measurement_df = pd.DataFrame(measurements_list)
@@ -96,6 +96,8 @@ def carla_demo(exp):
         action_df.to_csv('_actions%d.csv' % episode)
         reward_df = pd.DataFrame(reward_list)
         reward_df.to_csv('_reward%d.csv' % episode)
+
+        print("Demonstration recorded!")
 
     return  demo_transitions
 

@@ -28,7 +28,7 @@ TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 # ----------------------------- DQfD ----------------------------------------------
 
 #------------Pretrain setting---------
-PRE_TRAIN_STEP_NUM = 2000 # DQfD pre-training step number
+PRE_TRAIN_STEP_NUM = 1000 # DQfD pre-training step number
 
 
 #------memory setting--------

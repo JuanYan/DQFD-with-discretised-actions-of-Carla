@@ -1,13 +1,8 @@
 import itertools
-import torch
 import config
-import pandas as pd
-from DQfD_model import Agent, Transition
-from CustomEnv import CarlaEnv
-import utils
+from DQfD_model import Agent
 import pickle
 import collections
-import numpy as np
 
 
 # Carla
@@ -43,3 +38,5 @@ if __name__ == "__main__":
     with open(config.CARLA_PRETRAIN_FILE, 'wb') as f:
         pickle.dump(agent, f)
         print("Parameters achevied!")
+
+    print("Pretrain finished!")

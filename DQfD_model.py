@@ -5,12 +5,10 @@ Deep Q-learning from Demonstrations
 import numpy as np
 import random
 from collections import namedtuple
-from tqdm import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from torch.autograd import Variable
 from memory import Memory
 import config
 
@@ -21,18 +19,6 @@ dtype = torch.cuda.DoubleTensor if config.USE_CUDA and torch.cuda.is_available()
 
 
 class DQN(nn.Module):
-    # def __init__(self):
-    #     super(DQN, self).__init__()
-    #     self.l1 = nn.Linear(config.STATE_DIM, 24)
-    #     self.l2 = nn.Linear(24, 24)
-    #     self.l3 = nn.Linear(24, config.ACTION_DIM)
-    #
-    # def forward(self, x):
-    #     x = F.relu(self.l1(x))
-    #     x = F.relu(self.l2(x))
-    #     x = F.relu(self.l3(x))
-    #     return x.view(x.size(0), -1)
-
 
     def __init__(self):
         super(DQN, self).__init__()
@@ -72,7 +58,7 @@ class Agent:
         self.target_net = DQN().to(device, dtype=torch.double)
         self.policy_net = DQN().to(device,dtype=torch.double)
 
-        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=config.LEARNING_RATE)
+        self.optimizer = optim.Adam(self.policy_net.parameters(), lr=config.LEARNING_RATE, weight_decay=1)
 
     def replay_memory_push(self, transitions):
         """
