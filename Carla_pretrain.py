@@ -32,8 +32,9 @@ def load_demo(demo_file):
 
 if __name__ == "__main__":
 
-
+    print('loading demonstrations...')
     demo_transitions = load_demo(config.CARLA_DEMO_FILE)
+    print('loaded!')
     agent = Agent(demo_transitions)
     agent.replay_memory_push(demo_transitions)
     agent.demo_memory_push(demo_transitions)

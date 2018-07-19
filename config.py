@@ -18,7 +18,7 @@ CARLA_IMG_HEIGHT = 150
 CARLA_IMG_WIDTH = 200
 
 #CARLA demo
-CARLA_DEMO_EPISODE = 10
+CARLA_DEMO_EPISODE = 5
 CARLA_DEMO_FRAME = 1000
 
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map

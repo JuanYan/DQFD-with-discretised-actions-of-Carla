@@ -41,19 +41,19 @@ class DQN(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
         self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(64)
         self.conv4 = nn.Conv2d(64, 64, kernel_size=5, stride=2)
-        self.bn4 = nn.BatchNorm2d(64)
         self.head1 = nn.Linear(6*9*64, 1500)
         self.head2 = nn.Linear(1500, 4*201)  # there is 804 output options for the action space
 
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        x = F.relu(self.bn4(self.conv4(x)))
-        return self.head2(x.view(x.size(0), -1))
-
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = x.view(x.size(0), -1)
+        x = F.relu(self.head1(x))
+        x = self.head2(x)
+        return x
 
 Transition = namedtuple('Transition', ('meas','state', 'action', 'reward', 'next_state', 'next_meas', 'n_reward'))
 
@@ -118,7 +118,7 @@ class Agent:
         # for i in tqdm(range(k)):
         for i in range(k):
             self.train(pre_train=True)
-            print('steps: %d' % i)
+            print('Pretrain steps: %d' % i)
             if i % config.TARGET_UPDATE == 0:
                 self.update_target_net()
                 print('Target network updated!')
