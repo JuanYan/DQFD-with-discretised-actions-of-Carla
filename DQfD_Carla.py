@@ -11,28 +11,35 @@ import utils
 import pickle
 import collections
 import numpy as np
+import matplotlib.pyplot as plt
 
+plt.ion()
 
 def dqfd_replay(exp, agent):
-    for i_episode in range(config.EPISODE_NUM):
+
+    overall_reward = []
+
+    for i_episode in range(config.REPLAY_EPISODE):
         exp.reset()
         state = None
         meas = None
         next_state = None
         next_meas = None
         offroad_list = []
-        otherlane_list=[]
+        otherlane_list = []
+        episode_reward = 0
 
         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
         for steps in itertools.count(config.DEMO_BUFFER_SIZE):
 
-            print("Replay frame: %d , length of replaymemory %d" % (steps, len(agent.replay_memory)))
+            print("Replay episode: %d, frame: %d , length of replaymemory %d" % (i_episode, steps, len(agent.replay_memory)))
             action_no = agent.e_greedy_select_action(state)
             action = exp.reverse_action(action_no)
             next_meas, next_state, reward, done, _ = exp.step(action)
             next_state = utils.rgb_image_to_tensor(next_state['CameraRGB'])
             offroad_list.append(next_meas['offroad'])
             otherlane_list.append(next_meas['other_lane'])
+            episode_reward += reward
 
             # reset the enviroment if the car stay offroad or other_lane for 5 consequent steps
             if len(offroad_list) > 10:
@@ -67,6 +74,18 @@ def dqfd_replay(exp, agent):
             if steps % 100 == 0:
                 agent.update_target_net()
 
+            if steps > config.DEMO_BUFFER_SIZE + config. REPLAY_FRAME:
+                overall_reward.append(episode_reward / config. REPLAY_FRAME)
+                utils.plot_reward(overall_reward)
+                break
+
+    print("Replay finished!")
+
+    return  overall_reward
+
+
+
+
 
 
 
@@ -84,8 +103,17 @@ if __name__ == "__main__":
         agent = pickle.load(f)
         num_prameters = sum(p.numel() for p in agent.policy_net.parameters() if p.requires_grad)
     print(num_prameters, "Prameter loaded!")
-    dqfd_replay(agent)
 
+    overall_reward = dqfd_replay(exp, agent)
+
+    plt.ioff()
+    plt.show()
+
+
+    plt.plot(overall_reward)
+    plt.ylabel('reward')
+    plt.xlabel('episode')
+    plt.show()
 
     exp.close()
 

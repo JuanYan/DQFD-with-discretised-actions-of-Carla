@@ -21,6 +21,11 @@ CARLA_IMG_WIDTH = 200
 CARLA_DEMO_EPISODE = 5
 CARLA_DEMO_FRAME = 1000
 
+
+#Carla selfreplay
+REPLAY_EPISODE = 200
+REPLAY_FRAME = 50
+
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
 
@@ -28,7 +33,7 @@ TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 # ----------------------------- DQfD ----------------------------------------------
 
 #------------Pretrain setting---------
-PRE_TRAIN_STEP_NUM = 1000 # DQfD pre-training step number
+PRE_TRAIN_STEP_NUM = 1000# DQfD pre-training step number
 
 
 #------memory setting--------
@@ -46,7 +51,6 @@ FINAL_EPSILON = 0.05  # final value of epsilon
 EPSILON_DECAY = 200
 
 Q_GAMMA = 0.99  # discount factor for Q
-EPISODE_NUM = 1
 TRAJECTORY_NUM = 10  # n-step number for n-step TD-loss in both demo data and generated data
 
 # loss related

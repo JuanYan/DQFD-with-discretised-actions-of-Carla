@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
 import config
+from IPython import display
 
 
 def rgb_image_to_tensor(camera_rgb):
@@ -34,3 +35,16 @@ def plot_rgb_image(camera_rgb):
     plt.figure()
     plt.imshow(camera_rgb.data)
     plt.show()
+
+
+
+def plot_reward(y):
+    plt.figure(1)
+    plt.clf()
+    plt.title('Training...')
+    plt.xlabel('Episode')
+    plt.ylabel('Reward')
+    plt.plot(y)
+    # plt.pause(0.001)  # pause a bit so that plots are updated
+
+

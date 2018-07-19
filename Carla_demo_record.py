@@ -21,6 +21,7 @@ def carla_demo(exp):
 
     # file name format to save images
     out_filename_format = '_imageout/episode_{:0>4d}/{:s}/{:0>6d}'
+    episode_reward = []
 
     for episode in range(0, config.CARLA_DEMO_EPISODE):
         # re-init client for each episode
@@ -96,10 +97,11 @@ def carla_demo(exp):
         action_df.to_csv('_actions%d.csv' % episode)
         reward_df = pd.DataFrame(reward_list)
         reward_df.to_csv('_reward%d.csv' % episode)
+        episode_reward.append(sum(reward_list))
 
-        print("Demonstration recorded!")
+    print("Demonstration recorded! Average reward per episode:", sum(episode_reward)/config.CARLA_DEMO_EPISODE)
 
-    return  demo_transitions
+    return  demo_transitions, episode_reward
 
 
 
@@ -107,7 +109,7 @@ if __name__ == "__main__":
 
     exp = CarlaEnv(config.TARGET)
     exp.reset()
-    demo_transitions = carla_demo(exp)
+    demo_transitions, episode_reward = carla_demo(exp)
 
     with open(config.CARLA_DEMO_FILE, 'wb') as f:
         pickle.dump(demo_transitions, f)
