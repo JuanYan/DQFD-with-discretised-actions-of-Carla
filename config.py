@@ -23,8 +23,8 @@ CARLA_DEMO_FRAME = 1000
 
 
 #Carla selfreplay
-REPLAY_EPISODE = 200
-REPLAY_FRAME = 50
+REPLAY_EPISODE = 100
+REPLAY_FRAME = 150
 
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
@@ -33,7 +33,7 @@ TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 # ----------------------------- DQfD ----------------------------------------------
 
 #------------Pretrain setting---------
-PRE_TRAIN_STEP_NUM = 1000# DQfD pre-training step number
+PRE_TRAIN_STEP_NUM = 1000 # DQfD pre-training step number
 
 
 #------memory setting--------
@@ -63,3 +63,4 @@ TARGET_UPDATE = 100  #100
 CARTPOLE_DEMO_FILE = "./Cartpole_demo.p"
 CARLA_DEMO_FILE = "./Carla_demo.p"
 CARLA_PRETRAIN_FILE = "./Carla_pretrain.p"
+CARLA_TRAIN_FILE = "./Carla_train.p"

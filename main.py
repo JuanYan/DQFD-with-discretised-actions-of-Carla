@@ -1,6 +1,6 @@
 
 #----------------------------the main function------------------------------
-### It calls the demo recording module, the pre-train module and also the self paly module.
+### It calls the demo recording module, the pre-train module and also the self paly module , and also the test module.
 
 from Carla_demo_record import carla_demo
 import config
@@ -37,13 +37,20 @@ agent.pre_train()
 
 with open(config.CARLA_PRETRAIN_FILE, 'wb') as f:
     pickle.dump(agent, f)
-    print("Parameters achevied!")
+    print("Pretrain parameters achevied!")
 
 # replay
 episode_replay_reward = dqfd_replay(exp, agent)
 
+
+with open(config.CARLA_TRAIN_FILE, 'wb') as f:
+    pickle.dump(agent, f)
+    print("Trained parameters achevied!")
+
 reward_df = pd.DataFrame(episode_replay_reward)
 reward_df.to_csv('_episode_reward.csv')
+
+
 
 plt.ioff()
 plt.show()

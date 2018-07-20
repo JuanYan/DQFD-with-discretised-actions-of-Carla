@@ -31,8 +31,8 @@ def dqfd_replay(exp, agent):
 
         # transition_queue = collections.deque(maxlen=config.TRAJECTORY_NUM)
         for steps in itertools.count(config.DEMO_BUFFER_SIZE):
-
-            print("Replay episode: %d, frame: %d , length of replaymemory %d" % (i_episode, steps, len(agent.replay_memory)))
+            frame_no = steps - config.DEMO_BUFFER_SIZE
+            print("Replay episode: %d, frame: %d , length of replaymemory %d" % (i_episode, frame_no , len(agent.replay_memory)))
             action_no = agent.e_greedy_select_action(state)
             action = exp.reverse_action(action_no)
             next_meas, next_state, reward, done, _ = exp.step(action)
@@ -66,6 +66,7 @@ def dqfd_replay(exp, agent):
 
 
             if agent.replay_memory.is_full:
+                print("Trainning!")
                 agent.train()
             #
             # if done:
@@ -74,10 +75,19 @@ def dqfd_replay(exp, agent):
             if steps % 100 == 0:
                 agent.update_target_net()
 
-            if steps > config.DEMO_BUFFER_SIZE + config. REPLAY_FRAME:
+            if frame_no >= config. REPLAY_FRAME:
                 overall_reward.append(episode_reward / config. REPLAY_FRAME)
                 utils.plot_reward(overall_reward)
+                print("%d steps of replay acheived!" % config. REPLAY_FRAME)
                 break
+
+ #save the result every 20 episode
+        if i_episode % 20 == 0:
+            reward_df = pd.DataFrame(overall_reward)
+            reward_df.to_csv('_episode_reward%d.csv' % i_episode)
+            with open(config.CARLA_TRAIN_FILE, 'wb') as f:
+                pickle.dump(agent, f)
+                print("Trained parameters achevied!")
 
     print("Replay finished!")
 
@@ -104,13 +114,20 @@ if __name__ == "__main__":
         num_prameters = sum(p.numel() for p in agent.policy_net.parameters() if p.requires_grad)
     print(num_prameters, "Prameter loaded!")
 
-    overall_reward = dqfd_replay(exp, agent)
+    episode_replay_reward = dqfd_replay(exp, agent)
 
     plt.ioff()
     plt.show()
 
+    reward_df = pd.DataFrame(episode_replay_reward)
+    reward_df.to_csv('_episode_reward.csv')
 
-    plt.plot(overall_reward)
+    with open(config.CARLA_TRAIN_FILE, 'wb') as f:
+        pickle.dump(agent, f)
+        print("Trained parameters achevied!")
+
+
+    plt.plot(episode_replay_reward)
     plt.ylabel('reward')
     plt.xlabel('episode')
     plt.show()
