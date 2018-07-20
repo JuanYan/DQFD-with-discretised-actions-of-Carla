@@ -20,6 +20,7 @@ def dqfd_replay(exp, agent):
     overall_reward = []
 
     for i_episode in range(config.REPLAY_EPISODE):
+        print("Environment reset...")
         exp.reset()
         state = None
         meas = None
@@ -78,11 +79,12 @@ def dqfd_replay(exp, agent):
             if frame_no >= config. REPLAY_FRAME:
                 overall_reward.append(episode_reward / config. REPLAY_FRAME)
                 utils.plot_reward(overall_reward)
-                print("%d steps of replay acheived!" % config. REPLAY_FRAME)
+                print("Episode finished!")
                 break
 
  #save the result every 20 episode
         if i_episode % 20 == 0:
+            print("Saving prameters for the last 20 episodes")
             reward_df = pd.DataFrame(overall_reward)
             reward_df.to_csv('_episode_reward%d.csv' % i_episode)
             with open(config.CARLA_TRAIN_FILE, 'wb') as f:
