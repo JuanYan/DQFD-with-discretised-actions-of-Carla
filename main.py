@@ -6,7 +6,7 @@ from Carla_demo_record import carla_demo
 import config
 from CustomEnv import CarlaEnv
 from DQfD_model import Agent, Transition
-from DQfD_Carla import dqfd_replay
+from Carla_replay import dqfd_replay
 import matplotlib
 import matplotlib.pyplot as plt
 import pickle
