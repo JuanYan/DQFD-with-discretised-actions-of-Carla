@@ -96,11 +96,6 @@ def dqfd_replay(exp, agent):
     return  overall_reward
 
 
-
-
-
-
-
 # Carla
 # add carla to python path
 

@@ -26,6 +26,9 @@ CARLA_DEMO_FRAME = 1000
 REPLAY_EPISODE = 100
 REPLAY_FRAME = 150
 
+#Carla Test
+TEST_EPISODE = 2
+
 TARGET = np.array([158.08, 27.18])  # the target location point 134 on the map
 
 

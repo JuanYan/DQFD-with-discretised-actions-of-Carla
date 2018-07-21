@@ -11,12 +11,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pickle
 import pandas as pd
-
-
-
-
-
-
+from Carla_test import dqfd_test
 
 
 exp = CarlaEnv(config.TARGET)
@@ -41,14 +36,14 @@ with open(config.CARLA_PRETRAIN_FILE, 'wb') as f:
 
 # replay
 episode_replay_reward = dqfd_replay(exp, agent)
-
+reward_df = pd.DataFrame(episode_replay_reward)
+reward_df.to_csv('_episode_reward.csv')
 
 with open(config.CARLA_TRAIN_FILE, 'wb') as f:
     pickle.dump(agent, f)
     print("Trained parameters achevied!")
 
-reward_df = pd.DataFrame(episode_replay_reward)
-reward_df.to_csv('_episode_reward.csv')
+episode_test_reward = dqfd_test(exp, agent)
 
 
 
