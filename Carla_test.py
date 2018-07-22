@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
 
     reward_df = pd.DataFrame(episode_test_reward)
-    reward_df.to_csv('_episode_test_reward.csv')
+    reward_df.to_csv('_episode_test_reward_after_replay.csv')
 
     plt.plot(episode_test_reward)
     plt.ylabel('reward')
